@@ -21,6 +21,10 @@ jobs:
           unzip -o VIVO_LITE_V1_0_project.zip -d .
           rm VIVO_LITE_V1_0_project.zip
 
+      - name: Preserve existing build workflow
+        run: |
+          git checkout -- .github/workflows/build-apk.yml
+
       - name: Save extracted files
         run: |
           git config user.name "github-actions[bot]"
