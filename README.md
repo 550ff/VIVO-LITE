@@ -1,26 +1,26 @@
-# VIVO LITE V0.1
+# VIVO LITE V0.2
 
-A minimal Android home-screen prototype for the Vivo Y21L. This is an Android app/launcher, **not a replacement operating system or ROM**. It does not modify partitions, bootloader, recovery, or firmware.
+A lightweight native Android launcher for the Vivo Y21L (Android 5.1.1 / API 22). This is an app, not a custom ROM.
 
-## What it currently does
-- Dark minimal home screen
-- Clock and date
-- Three-column grid of installed launchable apps
-- Tap an app to launch it
-- Can be selected as the Android Home app
+## V0.2 features
+- Dark charcoal interface with restrained cyan accent
+- Live clock and date
+- Search installed launchable apps
+- Four- or five-column app grid
+- Long-press an app to open, pin/unpin favourites, view app info, or hide it
+- Favourites dock
+- Settings for grid, clock, dock, hidden apps, refresh, and Android Home settings
+- Native Android views; no third-party UI libraries or background services
 
-## Build without installing development tools on your PC
-1. Create a GitHub repository named `VIVO-LITE`.
-2. Upload the contents of this project to the repository (keep the `.github` folder).
-3. Open the repository's **Actions** tab.
-4. Select **Build VIVO LITE APK** and run it, or push to the `main` branch.
-5. Wait for the workflow to finish successfully.
-6. Open the completed workflow run and download the `VIVO-LITE-V0.1-debug` artifact.
-7. Extract the ZIP; it contains `app-debug.apk`.
-8. Transfer the APK to the Vivo Y21L and install it. Android may ask you to allow installation from that source.
+## Build using GitHub Actions
+1. Upload/replace the project files in your `VIVO-LITE` repository, keeping the `.github` folder.
+2. Open the repository's **Actions** tab.
+3. Select **Build VIVO LITE APK** and tap **Run workflow** (or push to `main`).
+4. Open the completed run and download `VIVO-LITE-V0.2-debug`.
+5. Extract the downloaded artifact ZIP and install `app-debug.apk` on the Vivo Y21L.
+6. Choose VIVO LITE as the Home app when Android asks.
 
-## Notes
-- Minimum Android version declared: API 21.
-- The project uses Java and Android's built-in UI classes; no third-party UI libraries.
-- The APK is unsigned for Play Store distribution (Android can install a debug APK).
-- Build dependencies are downloaded by the hosted GitHub runner.
+## Compatibility
+- Minimum SDK: API 21 (Android 5.0); target SDK: 28.
+- Java native Android UI, no third-party libraries.
+- Debug APK is intended for testing, not Play Store distribution.
