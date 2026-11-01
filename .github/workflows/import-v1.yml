@@ -1,0 +1,32 @@
+name: Import VIVO LITE V1.0
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Extract V1.0 project
+        run: |
+          test -f VIVO_LITE_V1_0_project.zip
+          unzip -o VIVO_LITE_V1_0_project.zip -d .
+          rm VIVO_LITE_V1_0_project.zip
+
+      - name: Save extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Import VIVO LITE V1.0 project"
+            git push origin HEAD:main
+          fi
