@@ -1,3 +1,4 @@
+
 package com.vivolite.launcher;
 
 import android.app.Activity;
@@ -63,19 +64,29 @@ public class MainActivity extends Activity {
     private String draggingId;
     private String armedDragId;
 
-    public static Drawable iconFor(String id) { return DRAWABLES.get(id); }
+    public static Drawable iconFor(String id) {
+        return DRAWABLES.get(id);
+    }
 
-    @Override public void onCreate(Bundle state) {
+    @Override
+    public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        if (Build.VERSION.SDK_INT >= 21) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
+
+        if (Build.VERSION.SDK_INT >= 21) {
+            getWindow().addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
+            );
+        }
+
         storage = new LauncherStorage(this);
         iconCache = new IconCache(this);
         columns = storage.getColumns();
         hidden.addAll(storage.getHidden());
         favorites.addAll(storage.getFavorites());
+
         buildHome();
         loadApps();
         registerPackageReceiver();
@@ -85,145 +96,553 @@ public class MainActivity extends Activity {
         dock = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(Ui.dp(this,18),Ui.dp(this,14),Ui.dp(this,18),Ui.dp(this,8));
-        root.setBackgroundResource(com.vivolite.launcher.R.drawable.wallpaper_dark);
+        root.setPadding(
+            Ui.dp(this,18), Ui.dp(this,14),
+            Ui.dp(this,18), Ui.dp(this,8)
+        );
+        root.setBackgroundResource(
+            com.vivolite.launcher.R.drawable.wallpaper_dark
+        );
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView brand = text("V I V O   L I T E",11,Ui.WHITE,true);
-        top.addView(brand,new LinearLayout.LayoutParams(0,Ui.dp(this,34),1));
+        top.addView(brand,new LinearLayout.LayoutParams(
+            0,Ui.dp(this,34),1
+        ));
+
         TextView control = pill("CONTROL");
-        top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,94),Ui.dp(this,34)));
-        control.setOnClickListener(v->new ControlCenterDialog(this).show());
+        top.addView(control,new LinearLayout.LayoutParams(
+            Ui.dp(this,94),Ui.dp(this,34)
+        ));
+
+        control.setOnClickListener(
+            v -> new ControlCenterDialog(this).show()
+        );
+
         root.addView(top);
 
         clock = new TextClock(this);
-        clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
-        clock.setTextSize(54); clock.setTextColor(Ui.WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
-        cp.topMargin=Ui.dp(this,13); root.addView(clock,cp);
+        clock.setFormat24Hour("HH:mm");
+        clock.setFormat12Hour("h:mm");
+        clock.setTextSize(54);
+        clock.setTextColor(Ui.WHITE);
+        clock.setTypeface(
+            Typeface.create("sans-serif-thin",Typeface.NORMAL)
+        );
+
+        LinearLayout.LayoutParams cp =
+            new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
+        cp.topMargin = Ui.dp(this,13);
+        root.addView(clock,cp);
 
         date = new TextClock(this);
-        date.setFormat24Hour("EEEE  ·  d MMMM"); date.setFormat12Hour("EEEE  ·  d MMMM");
-        date.setTextSize(12); date.setTextColor(Ui.MUTED);
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,26));
-        dp.bottomMargin=Ui.dp(this,14); root.addView(date,dp);
-        if(!storage.showClock()){clock.setVisibility(View.GONE);date.setVisibility(View.GONE);}
+        date.setFormat24Hour("EEEE  ·  d MMMM");
+        date.setFormat12Hour("EEEE  ·  d MMMM");
+        date.setTextSize(12);
+        date.setTextColor(Ui.MUTED);
+
+        LinearLayout.LayoutParams dp =
+            new LinearLayout.LayoutParams(-1,Ui.dp(this,26));
+        dp.bottomMargin = Ui.dp(this,14);
+        root.addView(date,dp);
+
+        if (!storage.showClock()) {
+            clock.setVisibility(View.GONE);
+            date.setVisibility(View.GONE);
+        }
 
         search = new EditText(this);
-        search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.WHITE);
-        search.setHintTextColor(Ui.MUTED); search.setHint("⌕   Search apps");
+        search.setSingleLine(true);
+        search.setTextSize(14);
+        search.setTextColor(Ui.WHITE);
+        search.setHintTextColor(Ui.MUTED);
+        search.setHint("⌕   Search apps");
         search.setPadding(Ui.dp(this,16),0,Ui.dp(this,16),0);
         search.setBackground(Ui.panel(this,Ui.GLASS,22));
         search.setCompoundDrawablePadding(Ui.dp(this,8));
-        root.addView(search,new LinearLayout.LayoutParams(-1,Ui.dp(this,46)));
+
+        root.addView(search,new LinearLayout.LayoutParams(
+            -1,Ui.dp(this,46)
+        ));
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("APPLICATIONS",10,Ui.MUTED,true);
-        heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,40),1));
-        count=text("0",10,Ui.MUTED,false); heading.addView(count);
+
+        TextView title = text("APPLICATIONS",10,Ui.MUTED,true);
+        heading.addView(title,new LinearLayout.LayoutParams(
+            0,Ui.dp(this,40),1
+        ));
+
+        count = text("0",10,Ui.MUTED,false);
+        heading.addView(count);
         root.addView(heading);
 
-        ScrollView scroll=new ScrollView(this);
+        ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(false);
         scroll.setVerticalScrollBarEnabled(false);
-        grid=new GridLayout(this); grid.setColumnCount(columns);
-        scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
-        if(storage.showDock()) {
-            dock=new LinearLayout(this);
+        grid = new GridLayout(this);
+        grid.setColumnCount(columns);
+        scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));
+
+        root.addView(scroll,new LinearLayout.LayoutParams(
+            -1,0,1
+        ));
+
+        if (storage.showDock()) {
+            dock = new LinearLayout(this);
             dock.setGravity(Gravity.CENTER_VERTICAL);
-            dock.setPadding(Ui.dp(this,8),Ui.dp(this,6),Ui.dp(this,8),Ui.dp(this,6));
+            dock.setPadding(
+                Ui.dp(this,8),Ui.dp(this,6),
+                Ui.dp(this,8),Ui.dp(this,6)
+            );
             dock.setBackground(Ui.panel(this,Ui.GLASS,24));
-            LinearLayout.LayoutParams dpock=new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
-            dpock.topMargin=Ui.dp(this,8); root.addView(dock,dpock);
+
+            LinearLayout.LayoutParams dpock =
+                new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
+            dpock.topMargin = Ui.dp(this,8);
+            root.addView(dock,dpock);
         }
 
-        TextView footer=text("PURE  ·  FLUID  ·  MINIMAL",8,Ui.MUTED,false);
+        TextView footer = text(
+            "PURE  ·  FLUID  ·  MINIMAL",8,Ui.MUTED,false
+        );
         footer.setGravity(Gravity.CENTER);
-        root.addView(footer,new LinearLayout.LayoutParams(-1,Ui.dp(this,22)));
+        root.addView(footer,new LinearLayout.LayoutParams(
+            -1,Ui.dp(this,22)
+        ));
+
         setContentView(root);
 
         search.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s,int st,int c,int a){}
-            public void onTextChanged(CharSequence s,int st,int before,int c){render(s.toString());}
-            public void afterTextChanged(Editable e){}
+            public void beforeTextChanged(
+                CharSequence s,int st,int c,int a
+            ) {}
+
+            public void onTextChanged(
+                CharSequence s,int st,int before,int c
+            ) {
+                render(s.toString());
+            }
+
+            public void afterTextChanged(Editable e) {}
         });
     }
 
-    private TextView text(String value,int size,int color,boolean bold) {
-        TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);
-        if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+    private TextView text(
+        String value,int size,int color,boolean bold
+    ) {
+        TextView t = new TextView(this);
+        t.setText(value);
+        t.setTextSize(size);
+        t.setTextColor(color);
+
+        if (bold) {
+            t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        }
+
         return t;
     }
 
     private TextView pill(String value) {
-        TextView t=text(value,10,Ui.WHITE,true);t.setGravity(Gravity.CENTER);
-        t.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,18));return t;
+        TextView t = text(value,10,Ui.WHITE,true);
+        t.setGravity(Gravity.CENTER);
+        t.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,18));
+        return t;
     }
 
     private void loadApps() {
-        apps.clear(); DRAWABLES.clear();
-        PackageManager pm=getPackageManager();
-        Intent query=new Intent(Intent.ACTION_MAIN);query.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found=pm.queryIntentActivities(query,0);
-        Set<String> seen=new HashSet<>();
-        for(ResolveInfo r:found) {
-            if(r.activityInfo==null || r.activityInfo.packageName.equals(getPackageName()))continue;
-            String pkg=r.activityInfo.packageName, cls=r.activityInfo.name, id=pkg+"/"+cls;
-            if(!seen.add(id))continue;
-            LauncherItem item=LauncherItem.app(id,String.valueOf(r.loadLabel(pm)),pkg,cls);
+        apps.clear();
+        DRAWABLES.clear();
+
+        PackageManager pm = getPackageManager();
+        Intent query = new Intent(Intent.ACTION_MAIN);
+        query.addCategory(Intent.CATEGORY_LAUNCHER);
+
+        List<ResolveInfo> found =
+            pm.queryIntentActivities(query,0);
+
+        Set<String> seen = new HashSet<>();
+
+        for (ResolveInfo r : found) {
+            if (r.activityInfo == null ||
+                r.activityInfo.packageName.equals(getPackageName())) {
+                continue;
+            }
+
+            String pkg = r.activityInfo.packageName;
+            String cls = r.activityInfo.name;
+            String id = pkg + "/" + cls;
+
+            if (!seen.add(id)) continue;
+
+            LauncherItem item = LauncherItem.app(
+                id,String.valueOf(r.loadLabel(pm)),pkg,cls
+            );
             apps.add(item);
-            Drawable drawable=r.loadIcon(pm);
+
+            Drawable drawable = r.loadIcon(pm);
             DRAWABLES.put(id,iconCache.get(id,drawable));
         }
+
         Collections.sort(apps,new Comparator<LauncherItem>() {
-            public int compare(LauncherItem a,LauncherItem b){return a.title.compareToIgnoreCase(b.title);}
+            public int compare(LauncherItem a,LauncherItem b) {
+                return a.title.compareToIgnoreCase(b.title);
+            }
         });
+
         restoreHomeItems();
-        render(search==null?"":search.getText().toString());
+        render(search == null ? "" : search.getText().toString());
     }
 
     private void restoreHomeItems() {
         homeItems.clear();
-        Map<String,LauncherItem> byId=new HashMap<>();
-        for(LauncherItem a:apps)byId.put(a.id,a);
-        List<String> order=storage.getOrder("home_order");
-        JSONObject folders=storage.getFolders();
-        Set<String> consumed=new HashSet<>();
-        for(String id:order) {
-            if(id.startsWith("folder:")) {
+
+        Map<String,LauncherItem> byId = new HashMap<>();
+        for (LauncherItem a : apps) {
+            byId.put(a.id,a);
+        }
+
+        List<String> order = storage.getOrder("home_order");
+        JSONObject folders = storage.getFolders();
+        Set<String> consumed = new HashSet<>();
+
+        for (String id : order) {
+            if (id.startsWith("folder:")) {
                 try {
-                    JSONObject data=folders.optJSONObject(id);
-                    if(data!=null) {
-                        LauncherItem folder=LauncherItem.folder(id,data.optString("name","Folder"));
-                        JSONArray children=data.optJSONArray("children");
-                        if(children!=null)for(int i=0;i<children.length();i++) {
-                            String child=children.optString(i);
-                            if(byId.containsKey(child))folder.children.add(child);
+                    JSONObject data = folders.optJSONObject(id);
+
+                    if (data != null) {
+                        LauncherItem folder = LauncherItem.folder(
+                            id,data.optString("name","Folder")
+                        );
+
+                        JSONArray children = data.optJSONArray("children");
+
+                        if (children != null) {
+                            for (int i = 0; i < children.length(); i++) {
+                                String child = children.optString(i);
+
+                                if (byId.containsKey(child)) {
+                                    folder.children.add(child);
+                                }
+                            }
                         }
+
                         homeItems.add(folder);
                         consumed.addAll(folder.children);
                     }
-                } catch(Exception ignored) {}
-            } else if(byId.containsKey(id) && !consumed.contains(id)) homeItems.add(byId.get(id));
+                } catch (Exception ignored) {}
+            } else if (byId.containsKey(id) && !consumed.contains(id)) {
+                homeItems.add(byId.get(id));
+            }
         }
-        for(LauncherItem a:apps)if(!consumed.contains(a.id)&&!contains(homeItems,a.id))homeItems.add(a);
+
+        for (LauncherItem a : apps) {
+            if (!consumed.contains(a.id) &&
+                !contains(homeItems,a.id)) {
+                homeItems.add(a);
+            }
+        }
+
         saveHomeOrder();
     }
 
     private boolean contains(List<LauncherItem> list,String id) {
-        for(LauncherItem item:list)if(item.id.equals(id))return true;
+        for (LauncherItem item : list) {
+            if (item.id.equals(id)) return true;
+        }
         return false;
     }
 
     private void saveHomeOrder() {
-        ArrayList<String> order=new ArrayList<>();
-        for(LauncherItem item:homeItems)order.add(item.id);
+        ArrayList<String> order = new ArrayList<>();
+
+        for (LauncherItem item : homeItems) {
+            order.add(item.id);
+        }
+
         storage.setOrder("home_order",order);
+
+        JSONObject folders = new JSONObject();
+
+        for (LauncherItem item : homeItems) {
+            if (item.isFolder()) {
+                try {
+                    JSONObject data = new JSONObject();
+                    data.put("name",item.title);
+
+                    JSONArray children = new JSONArray();
+                    for (String id : item.children) {
+                        children.put(id);
+                    }
+
+                    data.put("children",children);
+                    folders.put(item.id,data);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        storage.setFolders(folders);
+    }
+
+    private void render(String filter) {
+        if (grid == null) return;
+
+        grid.removeAllViews();
+
+        ArrayList<LauncherItem> visible = new ArrayList<>();
+        String q = filter == null ? "" :
+            filter.toLowerCase(Locale.ROOT).trim();
+
+        for (LauncherItem item : homeItems) {
+            if (item.isFolder()) {
+                boolean match =
+                    item.title.toLowerCase(Locale.ROOT).contains(q);
+
+                if (q.isEmpty() || match) {
+                    visible.add(item);
+                } else {
+                    for (String id : item.children) {
+                        LauncherItem a = findApp(id);
+
+                        if (a != null && !hidden.contains(id) &&
+                            a.title.toLowerCase(Locale.ROOT).contains(q)) {
+                            visible.add(item);
+                            break;
+                        }
+                    }
+                }
+            } else if (!hidden.contains(item.id) &&
+                item.title.toLowerCase(Locale.ROOT).contains(q)) {
+                visible.add(item);
+            }
+        }
+
+        count.setText(visible.size() + " ITEMS");
+
+        int totalWidth =
+            getResources().getDisplayMetrics().widthPixels -
+            Ui.dp(this,36);
+        int cell = totalWidth / columns;
+
+        grid.setColumnCount(columns);
+
+        for (int i = 0; i < visible.size(); i++) {
+            LauncherItem item = visible.get(i);
+            LinearLayout cellView = makeCell(item);
+
+            GridLayout.LayoutParams p =
+                new GridLayout.LayoutParams();
+            p.width = cell;
+            p.height = Ui.dp(this,104);
+            p.setMargins(0,0,0,0);
+
+            grid.addView(cellView,p);
+        }
+
+        renderDock();
+    }
+
+    private LinearLayout makeCell(LauncherItem item) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(
+            Ui.dp(this,2),Ui.dp(this,8),
+            Ui.dp(this,2),Ui.dp(this,4)
+        );
+
+        View iconView;
+
+        if (item.isFolder()) {
+            iconView = folderPreview(item);
+        } else {
+            ImageView icon = new ImageView(this);
+            Drawable d = DRAWABLES.get(item.id);
+
+            if (d != null) {
+                icon.setImageDrawable(d);
+            }
+
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iconView = icon;
+        }
+
+        cell.addView(iconView,new LinearLayout.LayoutParams(
+            Ui.dp(this,46),Ui.dp(this,46)
+        ));
+
+        TextView name = text(item.title,10,Ui.WHITE,false);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+
+        LinearLayout.LayoutParams np =
+            new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
+        np.topMargin = Ui.dp(this,4);
+        cell.addView(name,np);
+
+        cell.setOnClickListener(v -> {
+            Ui.press(cell,storage.animations());
+
+            if (item.isFolder()) {
+                openFolder(item);
+            } else {
+                launch(item.id);
+            }
+        });
+
+        cell.setOnLongClickListener(v -> {
+            showItemMenu(item);
+            return true;
+        });
+
+        cell.setOnTouchListener((v,event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN &&
+                item.id.equals(armedDragId)) {
+                android.content.ClipData data =
+                    android.content.ClipData.newPlainText(
+                        "VIVO_LITE_ITEM",item.id
+                    );
+
+                v.startDrag(
+                    data,new View.DragShadowBuilder(v),item.id,0
+                );
+
+                armedDragId = null;
+                return true;
+            }
+
+            return false;
+        });
+
+        cell.setOnDragListener((v,event) ->
+            handleDrop(v,item,event)
+        );
+
+        if (item.isFolder()) {
+            cell.setOnClickListener(v -> openFolder(item));
+        }
+
+        Ui.enter(cell,storage.animations(),5);
+        return cell;
+    }
+
+    private View folderPreview(LauncherItem folder) {
+        GridLayout preview = new GridLayout(this);
+        preview.setColumnCount(2);
+        preview.setPadding(
+            Ui.dp(this,5),Ui.dp(this,5),
+            Ui.dp(this,5),Ui.dp(this,5)
+        );
+        preview.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,13));
+
+        for (int i = 0; i < 4; i++) {
+            ImageView image = new ImageView(this);
+
+            if (i < folder.children.size()) {
+                Drawable d = DRAWABLES.get(folder.children.get(i));
+
+                if (d != null) {
+                    image.setImageDrawable(d);
+                }
+            }
+
+            GridLayout.LayoutParams p =
+                new GridLayout.LayoutParams();
+            p.width = Ui.dp(this,16);
+            p.height = Ui.dp(this,16);
+            preview.addView(image,p);
+        }
+
+        return preview;
+    }
+
+    private boolean handleDrop(
+        View target,LauncherItem targetItem,
+        android.view.DragEvent event
+    ) {
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return true;
+
+            case DragEvent.ACTION_DRAG_ENTERED:
+                target.setAlpha(0.65f);
+                return true;
+
+            case DragEvent.ACTION_DRAG_EXITED:
+                target.setAlpha(1f);
+                return true;
+
+            case DragEvent.ACTION_DROP:
+                target.setAlpha(1f);
+
+                String source = (String) event.getLocalState();
+
+                if (source == null || source.equals(targetItem.id)) {
+                    return true;
+                }
+
+                LauncherItem sourceItem = findHome(source);
+                if (sourceItem == null) return true;
+
+                if (targetItem.isFolder()) {
+                    if (!sourceItem.isFolder() &&
+                        !targetItem.children.contains(source)) {
+                        targetItem.children.add(source);
+                        homeItems.remove(sourceItem);
+                    }
+                } else if (!sourceItem.isFolder()) {
+                    float x = event.getX() /
+                        Math.max(1,target.getWidth());
+
+                    if (x > 0.25f && x < 0.75f) {
+                        LauncherItem folder = LauncherItem.folder(
+                            "folder:" + System.currentTimeMillis(),
+                            "Folder"
+                        );
+
+                        folder.children.add(source);
+                        folder.children.add(targetItem.id);
+
+                        int index = homeItems.indexOf(targetItem);
+                        homeItems.remove(sourceItem);
+                        index = homeItems.indexOf(targetItem);
+                        homeItems.remove(targetItem);
+
+                        homeItems.add(Math.max(0,index),folder);
+                    } else {
+                        int from = homeItems.indexOf(sourceItem);
+                        int to = homeItems.indexOf(targetItem);
+
+                        homeItems.remove(sourceItem);
+                        if (from < to) to--;
+                        if (x >= 0.75f) to++;
+
+                        homeItems.add(
+                            Math.max(0,Math.min(to,homeItems.size())),
+                            sourceItem
+                        );
+                    }
+                }
+
+                saveHomeOrder();
+                render(search.getText().toString());
+                return true;
+
+            case DragEvent.ACTION_DRAG_ENDED:
+                target.setAlpha(1f);
+                return true;
+        }
+
+        return true;
+    }
+
+    private LauncherItem findHome(String id) {
+ ",order);
         JSONObject folders=new JSONObject();
         for(LauncherItem item:homeItems)if(item.isFolder()) {
             try {
