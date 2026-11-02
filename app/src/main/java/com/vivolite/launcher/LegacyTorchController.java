@@ -86,7 +86,7 @@ final class LegacyTorchController extends SurfaceView implements SurfaceHolder.C
         if(camera!=null){try{camera.stopPreview();}catch(Exception ignored){}try{camera.release();}catch(Exception ignored){}camera=null;}
     }
 
-    boolean isEnabled(){return enabled;}
+    boolean isTorchEnabled(){return enabled;}
     @Override public void surfaceCreated(SurfaceHolder holder) { }
     @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) { }
     @Override public void surfaceDestroyed(SurfaceHolder holder) { turnOff(); }

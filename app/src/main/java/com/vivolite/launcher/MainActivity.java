@@ -286,7 +286,7 @@ public class MainActivity extends Activity {
     }
 
     public void toggleTorch() { if(torchController!=null)torchController.toggle(); }
-    public boolean isTorchOn() { return torchController!=null&&torchController.isEnabled(); }
+    public boolean isTorchOn() { return torchController!=null&&torchController.isTorchEnabled(); }
 
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults) {
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
