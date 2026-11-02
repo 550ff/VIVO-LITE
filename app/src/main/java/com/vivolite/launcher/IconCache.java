@@ -7,6 +7,7 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.ColorFilter;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.LruCache;
 
@@ -25,22 +26,30 @@ public class IconCache {
     }
 
     public Drawable get(String key, Drawable source) {
-        Bitmap bitmap = cache.get(key);
+        return get(key, source, true);
+    }
+
+    public Drawable get(String key, Drawable source, boolean monochrome) {
+        if (source == null) return new ColorDrawable(android.graphics.Color.TRANSPARENT);
+        String cacheKey = key + (monochrome ? "|mono" : "|color");
+        Bitmap bitmap = cache.get(cacheKey);
         if (bitmap == null) {
             int size = (int)(48 * context.getResources().getDisplayMetrics().density + 0.5f);
             bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bitmap);
             source.setBounds(0, 0, size, size);
             ColorFilter previous = source.getColorFilter();
-            ColorMatrix monochrome = new ColorMatrix();
-            monochrome.setSaturation(0f);
+            if (monochrome) {
+                ColorMatrix matrix = new ColorMatrix();
+                matrix.setSaturation(0f);
+                source.setColorFilter(new ColorMatrixColorFilter(matrix));
+            }
             try {
-                source.setColorFilter(new ColorMatrixColorFilter(monochrome));
                 source.draw(canvas);
             } finally {
-                source.setColorFilter(previous);
+                if (monochrome) source.setColorFilter(previous);
             }
-            cache.put(key, bitmap);
+            cache.put(cacheKey, bitmap);
         }
         return new BitmapDrawable(context.getResources(), bitmap);
     }

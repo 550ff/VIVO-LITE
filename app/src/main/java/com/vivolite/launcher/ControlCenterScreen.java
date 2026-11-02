@@ -14,6 +14,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class ControlCenterScreen extends LinearLayout {
+    private final TextView flashlight;
     public ControlCenterScreen(Context context) {
         super(context);
         LinearLayout panel = this;
@@ -33,6 +34,12 @@ public class ControlCenterScreen extends LinearLayout {
         LinearLayout.LayoutParams tileRow=new LinearLayout.LayoutParams(-1,Ui.dp(context,82));
         tileRow.topMargin=Ui.dp(context,8);panel.addView(row,tileRow);
 
+        flashlight=text(context,"FLASHLIGHT  ·  OFF",11,Ui.primaryText());
+        flashlight.setGravity(Gravity.CENTER);flashlight.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,16));
+        LinearLayout.LayoutParams flashParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,42));
+        flashParams.topMargin=Ui.dp(context,8);panel.addView(flashlight,flashParams);
+        flashlight.setOnClickListener(v->((MainActivity)context).toggleTorch());
+
         TextView brightness = text(context,"BRIGHTNESS",11,Ui.secondaryText());
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1,Ui.dp(context,30));
         bp.topMargin=Ui.dp(context,14); panel.addView(brightness,bp);
@@ -48,6 +55,10 @@ public class ControlCenterScreen extends LinearLayout {
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar s,int value,boolean user) {
                 if(!user) return;
+                if(android.os.Build.VERSION.SDK_INT>=23&&!Settings.System.canWrite(context)) {
+                    openBrightnessPermission(context);
+                    return;
+                }
                 int safe=Math.max(15,value);
                 try {
                     Settings.System.putInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS_MODE,Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
@@ -105,6 +116,8 @@ public class ControlCenterScreen extends LinearLayout {
 
     }
 
+    void setTorchState(boolean enabled) { flashlight.setText("FLASHLIGHT  ·  "+(enabled?"ON":"OFF")); }
+
     private void addTile(Context c,LinearLayout row,String label,Runnable action) {
         LinearLayout tile=new LinearLayout(c);
         tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.CENTER);
@@ -141,6 +154,12 @@ public class ControlCenterScreen extends LinearLayout {
     private void open(String action) {
         try { getContext().startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
         catch(Exception ignored) { Toast.makeText(getContext(),"Setting unavailable",Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void openBrightnessPermission(Context context) {
+        try {context.startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,android.net.Uri.parse("package:"+context.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+        catch(Exception ignored) {open(Settings.ACTION_DISPLAY_SETTINGS);}
+        Toast.makeText(context,"Allow VIVO-LITE to modify system settings, then return to adjust brightness",Toast.LENGTH_LONG).show();
     }
 
     private String batteryLabel(Context context) {

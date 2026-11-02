@@ -36,6 +36,10 @@ public class LauncherStorage {
 
     public int getColumns() { return prefs.getInt("columns", 4); }
     public void setColumns(int value) { prefs.edit().putInt("columns", value).apply(); }
+    public int getHomePage() { return Math.max(0,prefs.getInt("home_page",0)); }
+    public void setHomePage(int value) { prefs.edit().putInt("home_page",Math.max(0,value)).apply(); }
+    public String getQuickNote() { return prefs.getString("quick_note",""); }
+    public void setQuickNote(String value) { prefs.edit().putString("quick_note",value==null?"":value).apply(); }
     public boolean showClock() { return prefs.getBoolean("clock", true); }
     public void setShowClock(boolean value) { prefs.edit().putBoolean("clock", value).apply(); }
     public boolean showDock() { return prefs.getBoolean("dock", true); }
@@ -50,6 +54,10 @@ public class LauncherStorage {
     public void setWallpaper(int value) { prefs.edit().putInt("wallpaper", value).apply(); }
     public int getIconSize() { return prefs.getInt("icon_size", 46); }
     public void setIconSize(int value) { prefs.edit().putInt("icon_size", value).apply(); }
+    public String getIconPack() { return prefs.getString("icon_pack",""); }
+    public void setIconPack(String value) { prefs.edit().putString("icon_pack",value==null?"":value).apply(); }
+    public int getWidgetHeight(int appWidgetId,int fallbackDp) { return prefs.getInt("widget_height_"+appWidgetId,fallbackDp); }
+    public void setWidgetHeight(int appWidgetId,int heightDp) { prefs.edit().putInt("widget_height_"+appWidgetId,heightDp).apply(); }
 
     public JSONObject getLayout() {
         try { return new JSONObject(prefs.getString("layout", "{}")); }

@@ -2,6 +2,10 @@ package com.vivolite.launcher;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.appwidget.AppWidgetHost;
+import android.appwidget.AppWidgetHostView;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProviderInfo;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -19,6 +23,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.provider.AlarmClock;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -28,7 +33,9 @@ import android.view.DragEvent;
 import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -52,12 +59,30 @@ public class MainActivity extends Activity {
     private static final Map<String,Drawable> DRAWABLES = new HashMap<>();
     private LauncherStorage storage;
     private IconCache iconCache;
+    private IconPackManager iconPackManager;
     private final ArrayList<LauncherItem> apps = new ArrayList<>();
     private final ArrayList<LauncherItem> homeItems = new ArrayList<>();
     private final Set<String> hidden = new HashSet<>();
     private final Set<String> favorites = new HashSet<>();
     private LinearLayout root, dock;
+    private FrameLayout homeFrame;
+    private LinearLayout widgetShelf;
     private GridLayout grid;
+    private HorizontalScrollView homePager;
+    private LinearLayout pageTrack, pageDots;
+    private final ArrayList<GridLayout> homeGrids = new ArrayList<>();
+    private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
+    private Runnable pageSnap;
+    private int currentHomePage = 0;
+    private static final int WIDGET_HOST_ID=0x564C;
+    private static final int REQUEST_WIDGET_PICK=4100;
+    private static final int REQUEST_WIDGET_CONFIGURE=4101;
+    private AppWidgetManager appWidgetManager;
+    private AppWidgetHost appWidgetHost;
+    private final ArrayList<Integer> widgetIds=new ArrayList<>();
+    private int pendingWidgetId=-1;
+    private boolean widgetsListening=false;
+    private boolean configuringNewWidget=false;
     private EditText search;
     private TextClock clock, date;
     private TextView count;
@@ -66,6 +91,11 @@ public class MainActivity extends Activity {
     private View activeSurfaceView;
     private NotificationScreen activeNotificationScreen;
     private int activeSurface = SurfaceNavigation.HOME;
+    private View smartEdgeOverlay;
+    private TextView pulseCapsule;
+    private boolean batteryReceiverRegistered=false;
+    private LegacyTorchController torchController;
+    static final int REQUEST_CAMERA_PERMISSION=5502;
     private int columns = 4;
     private boolean receiverRegistered = false;
     private boolean iconsTrimmed = false;
@@ -75,7 +105,8 @@ public class MainActivity extends Activity {
     private String armedDragId;
     private final Handler packageRefreshHandler = new Handler(Looper.getMainLooper());
     private final Runnable packageRefresh = () -> {
-        if(activityResumed)loadApps();else packagesDirty=true;
+        if(activityResumed){loadApps();if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();}
+        else packagesDirty=true;
     };
     private final Handler searchRenderHandler = new Handler(Looper.getMainLooper());
     private Runnable searchRender;
@@ -89,17 +120,27 @@ public class MainActivity extends Activity {
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         if (Build.VERSION.SDK_INT >= 21) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
         storage = new LauncherStorage(this);
+        currentHomePage=storage.getHomePage();
+        appWidgetManager=AppWidgetManager.getInstance(this);
+        appWidgetHost=new AppWidgetHost(this,WIDGET_HOST_ID);
+        for(String id:storage.getOrder("widget_ids"))try{widgetIds.add(Integer.parseInt(id));}catch(Exception ignored){}
         iconCache = new IconCache(this);
+        iconPackManager = new IconPackManager(this);
+        iconPackManager.select(storage.getIconPack());
         columns = storage.getColumns();
         applyAppearance();
         hidden.addAll(storage.getHidden());
         favorites.addAll(storage.getFavorites());
         buildHome();
+        attachTorchPreview();
         loadApps();
         registerPackageReceiver();
     }
 
     private void buildHome() {
+        closeSmartEdge();
+        if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+        currentHomePage=storage.getHomePage();
         dock = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -118,10 +159,6 @@ public class MainActivity extends Activity {
         strap.setLetterSpacing(0.12f);
         brandBlock.addView(strap);
         top.addView(brandBlock,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
-        TextView style = pill("STYLE");
-        LinearLayout.LayoutParams styleP=new LinearLayout.LayoutParams(Ui.dp(this,62),Ui.dp(this,34));
-        styleP.rightMargin=Ui.dp(this,7);top.addView(style,styleP);
-        style.setOnClickListener(v->settings());
         TextView library = pill("LIBRARY");
         LinearLayout.LayoutParams libraryP=new LinearLayout.LayoutParams(Ui.dp(this,70),Ui.dp(this,34));
         libraryP.rightMargin=Ui.dp(this,7);top.addView(library,libraryP);
@@ -129,6 +166,10 @@ public class MainActivity extends Activity {
         TextView control = pill("CONTROL");
         top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
         control.setOnClickListener(v->showControlCenter());
+        TextView addWidget=pill("+ WIDGET");
+        LinearLayout.LayoutParams widgetButtonParams=new LinearLayout.LayoutParams(Ui.dp(this,76),Ui.dp(this,34));
+        widgetButtonParams.rightMargin=Ui.dp(this,7);top.addView(addWidget,1,widgetButtonParams);
+        addWidget.setOnClickListener(v->pickWidget());
         root.addView(top);
 
         clock = new TextClock(this);
@@ -161,6 +202,18 @@ public class MainActivity extends Activity {
         dp.bottomMargin=Ui.dp(this,16); root.addView(date,dp);
         if(!storage.showClock()){clock.setVisibility(View.GONE);date.setVisibility(View.GONE);}
 
+        pulseCapsule=text("PULSE  ·  "+batterySummary(),9,Ui.primaryText(),true);
+        pulseCapsule.setGravity(Gravity.CENTER);
+        pulseCapsule.setLetterSpacing(0.04f);
+        pulseCapsule.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,18));
+        LinearLayout.LayoutParams pulseParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,32));
+        pulseParams.bottomMargin=Ui.dp(this,8);root.addView(pulseCapsule,pulseParams);
+        pulseCapsule.setOnClickListener(v->showControlCenter());
+        pulseCapsule.setOnLongClickListener(v->{showSmartEdge();return true;});
+
+        widgetShelf=new LinearLayout(this);widgetShelf.setOrientation(LinearLayout.VERTICAL);
+        root.addView(widgetShelf,new LinearLayout.LayoutParams(-1,-2));
+
         search = new EditText(this);
         search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.primaryText());
         search.setHintTextColor(Ui.secondaryText()); search.setHint("⌕   Search your apps");
@@ -177,12 +230,23 @@ public class MainActivity extends Activity {
         count=text("0 ITEMS",9,Ui.MUTED,false); count.setLetterSpacing(0.06f); heading.addView(count);
         root.addView(heading);
 
-        ScrollView scroll=new ScrollView(this);
-        scroll.setFillViewport(false);
-        scroll.setVerticalScrollBarEnabled(false);
-        grid=new GridLayout(this); grid.setColumnCount(columns);
-        scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        homePager=new HorizontalScrollView(this);
+        homePager.setFillViewport(true);
+        homePager.setHorizontalScrollBarEnabled(false);
+        homePager.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        pageTrack=new LinearLayout(this);
+        pageTrack.setOrientation(LinearLayout.HORIZONTAL);
+        homePager.addView(pageTrack,new HorizontalScrollView.LayoutParams(-2,-1));
+        homePager.setOnTouchListener((view,event)->{
+            if(event.getAction()==MotionEvent.ACTION_UP){
+                if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+                pageSnap=()->snapHomePage();pageSnapHandler.postDelayed(pageSnap,90);
+            }
+            return false;
+        });
+        root.addView(homePager,new LinearLayout.LayoutParams(-1,0,1));
+        pageDots=new LinearLayout(this);pageDots.setGravity(Gravity.CENTER);
+        root.addView(pageDots,new LinearLayout.LayoutParams(-1,Ui.dp(this,20)));
 
         if(storage.showDock()) {
             dock=new LinearLayout(this);
@@ -196,13 +260,38 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,58));
         navigationParams.topMargin=Ui.dp(this,7);
         root.addView(new SurfaceNavigation(this,SurfaceNavigation.HOME),navigationParams);
-        setContentView(root);
+        homeFrame=new FrameLayout(this);
+        homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
+        homeFrame.addView(root,new FrameLayout.LayoutParams(-1,-1));
+        View edgeHandle=new View(this);edgeHandle.setContentDescription("Open Smart Edge quick tools");
+        edgeHandle.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,10));edgeHandle.setAlpha(0.68f);
+        FrameLayout.LayoutParams edgeParams=new FrameLayout.LayoutParams(Ui.dp(this,20),Ui.dp(this,88),Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        homeFrame.addView(edgeHandle,edgeParams);edgeHandle.setOnClickListener(v->showSmartEdge());
+        setContentView(homeFrame);
 
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s,int st,int c,int a){}
             public void onTextChanged(CharSequence s,int st,int before,int c){scheduleSearchRender(s.toString());}
             public void afterTextChanged(Editable e){}
         });
+        renderWidgetShelf();
+    }
+
+    private void attachTorchPreview() {
+        torchController=new LegacyTorchController(this,enabled->{
+            if(activeSurfaceView instanceof ControlCenterScreen)((ControlCenterScreen)activeSurfaceView).setTorchState(enabled);
+        });
+        FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(Ui.dp(this,1),Ui.dp(this,1),Gravity.LEFT|Gravity.TOP);
+        ((ViewGroup)getWindow().getDecorView()).addView(torchController,params);
+    }
+
+    public void toggleTorch() { if(torchController!=null)torchController.toggle(); }
+    public boolean isTorchOn() { return torchController!=null&&torchController.isEnabled(); }
+
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==REQUEST_CAMERA_PERMISSION&&torchController!=null)
+            torchController.onPermissionResult(grantResults.length>0&&grantResults[0]==PackageManager.PERMISSION_GRANTED);
     }
 
     private void scheduleSearchRender(String query) {
@@ -235,9 +324,11 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(13,19,30));
         getWindow().setNavigationBarColor(Color.rgb(13,19,30));
         if(root!=null)root.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
+        if(homeFrame!=null)homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
     }
 
     private void loadApps() {
+        iconPackManager.select(storage.getIconPack());
         apps.clear(); DRAWABLES.clear();
         PackageManager pm=getPackageManager();
         Intent query=new Intent(Intent.ACTION_MAIN);query.addCategory(Intent.CATEGORY_LAUNCHER);
@@ -247,10 +338,13 @@ public class MainActivity extends Activity {
             if(r.activityInfo==null || r.activityInfo.packageName.equals(getPackageName()))continue;
             String pkg=r.activityInfo.packageName, cls=r.activityInfo.name, id=pkg+"/"+cls;
             if(!seen.add(id))continue;
-            LauncherItem item=LauncherItem.app(id,String.valueOf(r.loadLabel(pm)),pkg,cls);
+            CharSequence label=r.loadLabel(pm);
+            LauncherItem item=LauncherItem.app(id,label==null?cls.substring(cls.lastIndexOf('.')+1):String.valueOf(label),pkg,cls);
             apps.add(item);
-            Drawable drawable=r.loadIcon(pm);
-            DRAWABLES.put(id,iconCache.get(id,drawable));
+            Drawable drawable=iconPackManager.icon(pkg,cls);
+            boolean monochrome=drawable==null;
+            if(monochrome)drawable=r.loadIcon(pm);
+            DRAWABLES.put(id,iconCache.get(id,drawable,monochrome));
         }
         Collections.sort(apps,new Comparator<LauncherItem>() {
             public int compare(LauncherItem a,LauncherItem b){return a.title.compareToIgnoreCase(b.title);}
@@ -327,8 +421,7 @@ public class MainActivity extends Activity {
     }
 
     private void render(String filter,boolean animate,boolean refreshDock) {
-        if(grid==null)return;
-        grid.removeAllViews();
+        if(homePager==null)return;
         ArrayList<LauncherItem> visible=new ArrayList<>();
         String q=filter==null?"":filter.toLowerCase(Locale.ROOT).trim();
         for(LauncherItem item:homeItems) {
@@ -342,18 +435,125 @@ public class MainActivity extends Activity {
             } else if(!hidden.contains(item.id)&&item.title.toLowerCase(Locale.ROOT).contains(q))visible.add(item);
         }
         count.setText(visible.size()+" ITEMS");
-        int totalWidth=getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40);
-        int cell=totalWidth/columns;
-        grid.setColumnCount(columns);
-        for(int i=0;i<visible.size();i++) {
-            LauncherItem item=visible.get(i);
-            LinearLayout cellView=makeCell(item,animate&&q.isEmpty()&&i<columns);
-            GridLayout.LayoutParams p=new GridLayout.LayoutParams();
-            p.width=cell;p.height=Ui.dp(this,104);
-            p.setMargins(0,0,0,0);
-            grid.addView(cellView,p);
-        }
+        if(!q.isEmpty())currentHomePage=0;
+        renderHomePages(visible,animate,q);
         if(refreshDock)renderDock();
+    }
+
+    private void renderHomePages(List<LauncherItem> visible,boolean animate,String query) {
+        pageTrack.removeAllViews();pageDots.removeAllViews();homeGrids.clear();grid=null;
+        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int pageCapacity=Math.max(columns,columns*4);
+        int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
+        int cell=width/columns;
+        for(int page=0;page<pageCount;page++) {
+            ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+            GridLayout pageGrid=new GridLayout(this);pageGrid.setColumnCount(columns);homeGrids.add(pageGrid);
+            if(grid==null)grid=pageGrid;
+            scroll.addView(pageGrid,new ScrollView.LayoutParams(-1,-2));
+            int start=page*pageCapacity,end=Math.min(visible.size(),start+pageCapacity);
+            for(int index=start;index<end;index++) {
+                LauncherItem item=visible.get(index);
+                LinearLayout cellView=makeCell(item,animate&&query.isEmpty()&&index-start<columns);
+                GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                params.width=cell;params.height=Ui.dp(this,104);pageGrid.addView(cellView,params);
+            }
+            pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
+            final int targetPage=page;
+            TextView dot=text("●",9,page==currentHomePage?Ui.primaryText():Ui.secondaryText(),false);
+            dot.setGravity(Gravity.CENTER);dot.setContentDescription("Home page "+(page+1));
+            pageDots.addView(dot,new LinearLayout.LayoutParams(Ui.dp(this,22),Ui.dp(this,20)));
+            dot.setOnClickListener(v->showHomePage(targetPage,true));
+        }
+        currentHomePage=Math.min(currentHomePage,pageCount-1);
+        if(query.isEmpty())storage.setHomePage(currentHomePage);
+        homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
+        updatePageIndicator();
+    }
+
+    private void showHomePage(int page,boolean smooth) {
+        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
+        if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
+        if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
+        updatePageIndicator();
+    }
+
+    private void showSmartEdge() {
+        if(smartEdgeOverlay!=null||homeFrame==null)return;
+        FrameLayout overlay=new FrameLayout(this);
+        View scrim=new View(this);scrim.setBackgroundColor(0x88000000);overlay.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        scrim.setOnClickListener(v->closeSmartEdge());
+        ArrayList<LauncherItem> quickFavorites=new ArrayList<>();
+        for(LauncherItem app:apps)if(favorites.contains(app.id)&&!hidden.contains(app.id)&&quickFavorites.size()<12)quickFavorites.add(app);
+        SmartEdgePanel panel=new SmartEdgePanel(this,quickFavorites,this::runSmartEdgeAction,()->closeSmartEdge());
+        FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(Ui.dp(this,280),-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        overlay.addView(panel,panelParams);
+        homeFrame.addView(overlay,new FrameLayout.LayoutParams(-1,-1));smartEdgeOverlay=overlay;
+        panel.setTranslationX(Ui.dp(this,280));
+        panel.animate().translationX(0).setDuration(storage.animations()?180:0).start();
+    }
+
+    private void closeSmartEdge() {
+        View overlay=smartEdgeOverlay;if(overlay==null)return;
+        smartEdgeOverlay=null;
+        if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);
+    }
+
+    private void runSmartEdgeAction(String action) {
+        closeSmartEdge();
+        try {
+            if(action.equals("timer")) {
+                Intent timer=new Intent(AlarmClock.ACTION_SET_TIMER);timer.putExtra(AlarmClock.EXTRA_LENGTH,300);timer.putExtra(AlarmClock.EXTRA_SKIP_UI,false);startActivity(timer);
+            } else if(action.equals("calculator")) {
+                Intent calculator=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALCULATOR);
+                if(calculator.resolveActivity(getPackageManager())!=null)startActivity(calculator);
+                else Toast.makeText(this,"No calculator app is installed",Toast.LENGTH_SHORT).show();
+            } else if(action.equals("note"))editQuickNote();
+            else if(action.startsWith("app:"))launch(action.substring(4));
+        } catch(Exception e) { Toast.makeText(this,"That tool is unavailable on this device",Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void editQuickNote() {
+        EditText editor=new EditText(this);editor.setText(storage.getQuickNote());editor.setTextColor(Ui.primaryText());editor.setHint("Write a quick note");
+        new AlertDialog.Builder(this).setTitle("QUICK NOTE").setView(editor)
+            .setPositiveButton("SAVE",(dialog,which)->storage.setQuickNote(editor.getText().toString()))
+            .setNegativeButton("CANCEL",null).show();
+    }
+
+    private String batterySummary() {
+        Intent status=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if(status==null)return "BATTERY UNAVAILABLE";
+        int level=status.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
+        int scale=status.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,-1);
+        int state=status.getIntExtra(android.os.BatteryManager.EXTRA_STATUS,-1);
+        if(level<0||scale<=0)return "BATTERY UNAVAILABLE";
+        boolean charging=state==android.os.BatteryManager.BATTERY_STATUS_CHARGING||state==android.os.BatteryManager.BATTERY_STATUS_FULL;
+        return (level*100/scale)+"%"+(charging?"  ·  CHARGING":"  ·  BATTERY");
+    }
+
+    private final BroadcastReceiver batteryReceiver=new BroadcastReceiver() {
+        @Override public void onReceive(Context context,Intent intent) {
+            if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary());
+        }
+    };
+
+    private void snapHomePage() {
+        if(homePager==null||homeGrids.isEmpty())return;
+        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int page=Math.round((float)homePager.getScrollX()/width);
+        showHomePage(page,true);
+    }
+
+    private void updatePageIndicator() {
+        if(pageDots==null||homePager==null)return;
+        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        currentHomePage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
+        for(int i=0;i<pageDots.getChildCount();i++) {
+            TextView dot=(TextView)pageDots.getChildAt(i);
+            dot.setTextColor(i==currentHomePage?Ui.primaryText():Ui.secondaryText());
+            dot.setText(i==currentHomePage?"●":"○");
+        }
     }
 
     private LinearLayout makeCell(LauncherItem item,boolean animate) {
@@ -609,14 +809,19 @@ public class MainActivity extends Activity {
 
     private final BroadcastReceiver packageReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
+            Uri changedPackage=intent.getData();
+            if(changedPackage!=null&&storage.getIconPack().equals(changedPackage.getSchemeSpecificPart())) {
+                iconPackManager.invalidate();
+                iconCache.trim();
+            }
             packageRefreshHandler.removeCallbacks(packageRefresh);
             packageRefreshHandler.postDelayed(packageRefresh,500);
         }
     };
 
     private void settings() {
-        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system"};
-        String[] descriptions={"Wallpaper, accent, glass and icons","Grid, clock and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts"};
+        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system","Workspace & tools"};
+        String[] descriptions={"Wallpaper, monochrome surfaces, icon sizing and icon packs","Grid, clock, pages and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts","Native widgets and launcher-owned quick tools"};
         SettingsScreen screen=new SettingsScreen(this,sections,descriptions,storage.animations(),new SettingsScreen.Listener(){
             public String[] options(int category){return settingsOptions(category);}
             public String[] descriptions(int category){return settingsDescriptions(category);}
@@ -627,26 +832,29 @@ public class MainActivity extends Activity {
 
     private String[] settingsOptions(int section) {
         if(section==0) return new String[]{"Wallpaper · "+wallpaperName(storage.getWallpaper()),
-                "Appearance · "+(storage.darkGlass()?"Dark glass":"Light glass"),"Icon size · "+storage.getIconSize()+" dp"};
+                "Appearance · "+(storage.darkGlass()?"Dark glass":"Light glass"),"Icon size · "+storage.getIconSize()+" dp","Icon pack · "+iconPackLabel()};
         if(section==1)return new String[]{"Grid columns · "+columns,"Clock and date · "+(storage.showClock()?"Shown":"Hidden"),"Dock · "+(storage.showDock()?"Shown":"Hidden")};
         if(section==2)return new String[]{"Animations · "+(storage.animations()?"On":"Off"),"Restore hidden apps","Refresh app library"};
         if(section==3)return new String[]{"Open notifications","Notification access settings"};
-        return new String[]{"Android Home settings","Android display settings","Android sound settings"};
+        if(section==4)return new String[]{"Android Home settings","Android display settings","Android sound settings"};
+        return new String[]{"Add a native Android widget","Open Smart Edge tools","Edit the saved quick note"};
     }
 
     private String[] settingsDescriptions(int section) {
-        if(section==0)return new String[]{"Choose one of the included static gradient wallpapers.","Switch between light and dark glass surfaces.","Choose the displayed app icon size. Accent colours are intentionally monochrome."};
+        if(section==0)return new String[]{"Choose one of the included static gradient wallpapers.","Switch between light and dark glass surfaces.","Choose the displayed app icon size.","Apply installed ADW-compatible icon mappings; unmapped apps use their Android icon."};
         if(section==1)return new String[]{"Toggle between four and five home grid columns.","Show or hide the home clock and date.","Show or hide the favourites dock."};
         if(section==2)return new String[]{"Enable or disable launcher page and interaction animations.","Make hidden apps visible again.","Re-query installed launchable apps."};
         if(section==3)return new String[]{"View notifications only when Android Notification Access is enabled.","Open Android's notification access settings."};
-        return new String[]{"Open Android Home app selection.","Open Android display settings.","Open Android sound settings."};
+        if(section==4)return new String[]{"Choose the Android Home app.","Open Android display settings.","Open Android sound settings."};
+        return new String[]{"Use Android's installed widget picker and persist the chosen widget.","Open launcher-owned timer, calculator, notes and favourite shortcuts.","Edit the note saved on this device."};
     }
 
     private void applySetting(int section,int index) {
         if(section==0) {
             if(index==0)chooseWallpaper();
             else if(index==1){storage.setDarkGlass(!storage.darkGlass());applyAppearance();rebuildHomeUi();}
-            else chooseIconSize();
+            else if(index==2)chooseIconSize();
+            else chooseIconPack();
         } else if(section==1) {
             if(index==0){columns=columns==4?5:4;storage.setColumns(columns);rebuildHomeUi();}
             else if(index==1){storage.setShowClock(!storage.showClock());clock.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);date.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);}
@@ -658,10 +866,14 @@ public class MainActivity extends Activity {
         } else if(section==3) {
             if(index==0)showNotifications();
             else openSystemSetting(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS,Settings.ACTION_SETTINGS);
-        } else {
+        } else if(section==4) {
             if(index==0)openSystemSetting(Settings.ACTION_HOME_SETTINGS,Settings.ACTION_SETTINGS);
             else if(index==1)openSystemSetting(Settings.ACTION_DISPLAY_SETTINGS,Settings.ACTION_SETTINGS);
             else openSystemSetting(Settings.ACTION_SOUND_SETTINGS,Settings.ACTION_SETTINGS);
+        } else {
+            if(index==0)pickWidget();
+            else if(index==1)showSmartEdge();
+            else editQuickNote();
         }
     }
 
@@ -683,7 +895,130 @@ public class MainActivity extends Activity {
     }
 
     private void showControlCenter() {
-        showSurface(new ControlCenterScreen(this),SurfaceNavigation.CONTROL);
+        ControlCenterScreen screen=new ControlCenterScreen(this);
+        screen.setTorchState(isTorchOn());
+        showSurface(screen,SurfaceNavigation.CONTROL);
+    }
+
+    private void pickWidget() {
+        pendingWidgetId=appWidgetHost.allocateAppWidgetId();
+        configuringNewWidget=true;
+        Intent pick=new Intent(AppWidgetManager.ACTION_APPWIDGET_PICK);
+        pick.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,pendingWidgetId);
+        try { startActivityForResult(pick,REQUEST_WIDGET_PICK); }
+        catch(Exception e) { appWidgetHost.deleteAppWidgetId(pendingWidgetId);pendingWidgetId=-1;Toast.makeText(this,"Widget picker unavailable",Toast.LENGTH_SHORT).show(); }
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==REQUEST_WIDGET_PICK) {
+            int id=data==null?pendingWidgetId:data.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,pendingWidgetId);
+            if(resultCode!=RESULT_OK||id<0) { if(id>=0)appWidgetHost.deleteAppWidgetId(id);pendingWidgetId=-1;return; }
+            pendingWidgetId=id;
+            AppWidgetProviderInfo info=appWidgetManager.getAppWidgetInfo(id);
+            if(info==null) { appWidgetHost.deleteAppWidgetId(id);pendingWidgetId=-1;return; }
+            if(info.configure!=null) {
+                try { appWidgetHost.startAppWidgetConfigureActivityForResult(this,id,0,REQUEST_WIDGET_CONFIGURE,null); }
+                catch(Exception e) { appWidgetHost.deleteAppWidgetId(id);pendingWidgetId=-1;configuringNewWidget=false;Toast.makeText(this,"Widget setup unavailable",Toast.LENGTH_SHORT).show(); }
+            } else finishWidgetSetup(id);
+        } else if(requestCode==REQUEST_WIDGET_CONFIGURE) {
+            if(resultCode==RESULT_OK&&pendingWidgetId>=0)finishWidgetSetup(pendingWidgetId);
+            else if(configuringNewWidget&&pendingWidgetId>=0)appWidgetHost.deleteAppWidgetId(pendingWidgetId);
+            pendingWidgetId=-1;
+            configuringNewWidget=false;
+        }
+    }
+
+    private void finishWidgetSetup(int id) {
+        if(!widgetIds.contains(id))widgetIds.add(id);
+        saveWidgetIds();pendingWidgetId=-1;
+        configuringNewWidget=false;
+        if(activeSurface!=SurfaceNavigation.HOME)navigateToSurface(SurfaceNavigation.HOME);
+        renderWidgetShelf();
+    }
+
+    private void saveWidgetIds() {
+        ArrayList<String> ids=new ArrayList<>();for(Integer id:widgetIds)ids.add(String.valueOf(id));
+        storage.setOrder("widget_ids",ids);
+    }
+
+    private void renderWidgetShelf() {
+        if(widgetShelf==null)return;
+        widgetShelf.removeAllViews();
+        for(Integer id:new ArrayList<>(widgetIds)) {
+            AppWidgetProviderInfo info=appWidgetManager.getAppWidgetInfo(id);
+            if(info==null){widgetIds.remove(id);try{appWidgetHost.deleteAppWidgetId(id);}catch(RuntimeException ignored){}continue;}
+            AppWidgetHostView hostView;
+            try {hostView=appWidgetHost.createView(this,id,info);hostView.setAppWidget(id,info);}
+            catch(RuntimeException e){continue;}
+            FrameLayout card=new FrameLayout(this);card.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,20));
+            int minHeightDp=Math.max(84,Math.round(info.minHeight/getResources().getDisplayMetrics().density));
+            int heightDp=storage.getWidgetHeight(id,minHeightDp);
+            int height=Ui.dp(this,Math.max(minHeightDp,Math.min(420,heightDp)));
+            FrameLayout.LayoutParams widgetParams=new FrameLayout.LayoutParams(-1,height);
+            card.addView(hostView,widgetParams);
+            TextView more=text("···",20,Ui.primaryText(),true);more.setGravity(Gravity.CENTER);
+            more.setBackground(Ui.panel(this,Ui.GLASS,18));
+            FrameLayout.LayoutParams moreParams=new FrameLayout.LayoutParams(Ui.dp(this,40),Ui.dp(this,36),Gravity.RIGHT|Gravity.TOP);
+            card.addView(more,moreParams);
+            more.setOnClickListener(v->showWidgetMenu(id,info));
+            LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(-1,height);
+            cardParams.bottomMargin=Ui.dp(this,8);widgetShelf.addView(card,cardParams);
+        }
+        saveWidgetIds();
+        widgetShelf.setVisibility(widgetShelf.getChildCount()==0?View.GONE:View.VISIBLE);
+    }
+
+    private void showWidgetMenu(int id,AppWidgetProviderInfo info) {
+        ArrayList<String> options=new ArrayList<>();
+        if(info.configure!=null)options.add("Configure widget");
+        options.add("Make taller");options.add("Make shorter");options.add("Remove widget");
+        String[] actions=options.toArray(new String[0]);
+        new AlertDialog.Builder(this).setItems(actions,(dialog,index)->{
+            String action=actions[index];
+            if("Configure widget".equals(action)) {
+                pendingWidgetId=id;
+                configuringNewWidget=false;
+                try {appWidgetHost.startAppWidgetConfigureActivityForResult(this,id,0,REQUEST_WIDGET_CONFIGURE,null);}
+                catch(Exception ignored){pendingWidgetId=-1;}
+            } else if("Make taller".equals(action))resizeWidget(id,info,48);
+            else if("Make shorter".equals(action))resizeWidget(id,info,-48);
+            else {
+                appWidgetHost.deleteAppWidgetId(id);widgetIds.remove(Integer.valueOf(id));saveWidgetIds();renderWidgetShelf();
+            }
+        }).show();
+    }
+
+    private void resizeWidget(int id,AppWidgetProviderInfo info,int changeDp) {
+        int minDp=Math.max(84,Math.round(info.minHeight/getResources().getDisplayMetrics().density));
+        int old=storage.getWidgetHeight(id,minDp);
+        int next=Math.max(minDp,Math.min(420,old+changeDp));
+        storage.setWidgetHeight(id,next);
+        android.os.Bundle options=new android.os.Bundle();
+        int widthDp=Math.max(1,Math.round(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density)-44);
+        options.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,widthDp);
+        options.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,widthDp);
+        options.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,next);
+        options.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,next);
+        try {appWidgetManager.updateAppWidgetOptions(id,options);}catch(RuntimeException ignored){}
+        renderWidgetShelf();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        try {appWidgetHost.startListening();widgetsListening=true;} catch(RuntimeException ignored){widgetsListening=false;}
+        try {registerReceiver(batteryReceiver,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));batteryReceiverRegistered=true;}catch(Exception ignored){batteryReceiverRegistered=false;}
+        if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary());
+    }
+
+    @Override protected void onStop() {
+        if(torchController!=null)torchController.turnOff();
+        if(widgetsListening)try {appWidgetHost.stopListening();}catch(RuntimeException ignored){}
+        widgetsListening=false;
+        if(batteryReceiverRegistered)try {unregisterReceiver(batteryReceiver);}catch(Exception ignored){}
+        batteryReceiverRegistered=false;
+        if(torchController!=null)torchController.turnOff();
+        super.onStop();
     }
 
     private void showSurface(View screen,int destination) {
@@ -696,10 +1031,11 @@ public class MainActivity extends Activity {
 
     public void navigateToSurface(int destination) {
         if(destination==activeSurface)return;
+        closeSmartEdge();
         releaseActiveSurface();
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
-        if(destination==SurfaceNavigation.HOME){setContentView(root);return;}
+        if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);return;}
         if(destination==SurfaceNavigation.LIBRARY)openLibrary();
         else if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
@@ -721,16 +1057,6 @@ public class MainActivity extends Activity {
         }).setNegativeButton("CANCEL",null).show();
     }
 
-    private void chooseAccent() {
-        String[] names={"Glacier blue","Violet","Mint","Rose"};
-        int[] colors={0xFF89AEFF,0xFFB49AFF,0xFF83D7C2,0xFFFFA6B7};
-        int selected=0;
-        for(int i=0;i<colors.length;i++)if(colors[i]==storage.getAccent())selected=i;
-        new AlertDialog.Builder(this).setTitle("ACCENT COLOUR").setSingleChoiceItems(names,selected,(dialog,which)->{
-            storage.setAccent(colors[which]);applyAppearance();rebuildHomeUi();dialog.dismiss();
-        }).setNegativeButton("CANCEL",null).show();
-    }
-
     private void chooseIconSize() {
         String[] names={"40 dp","46 dp","52 dp"};
         int[] sizes={40,46,52};
@@ -741,25 +1067,42 @@ public class MainActivity extends Activity {
         }).setNegativeButton("CANCEL",null).show();
     }
 
+    private void chooseIconPack() {
+        List<IconPackManager.Pack> packs=iconPackManager.discover();
+        ArrayList<String> labels=new ArrayList<>();ArrayList<String> packages=new ArrayList<>();
+        labels.add("VIVO-LITE monochrome (system icons)");packages.add("");
+        for(IconPackManager.Pack pack:packs){labels.add(pack.label);packages.add(pack.packageName);}
+        int selected=packages.indexOf(storage.getIconPack());if(selected<0)selected=0;
+        new AlertDialog.Builder(this).setTitle("APP ICON FAMILY")
+            .setSingleChoiceItems(labels.toArray(new String[0]),selected,(dialog,which)->{
+                storage.setIconPack(packages.get(which));iconPackManager.select(packages.get(which));iconCache.trim();loadApps();dialog.dismiss();
+            }).setNegativeButton("CANCEL",null).show();
+    }
+
+    private String iconPackLabel() {
+        String selected=storage.getIconPack();if(selected.isEmpty())return "VIVO-LITE";
+        for(IconPackManager.Pack pack:iconPackManager.discover())if(pack.packageName.equals(selected))return pack.label;
+        return "Unavailable · VIVO-LITE fallback";
+    }
+
     private String wallpaperName(int index) {
         String[] names={"Dynamic dark gradient","Deep ocean","Violet dusk"};
         return names[Math.max(0,Math.min(index,names.length-1))];
     }
 
-    private String accentName(int color) {
-        if(color==0xFFB49AFF)return "Violet";
-        if(color==0xFF83D7C2)return "Mint";
-        if(color==0xFFFFA6B7)return "Rose";
-        return "Glacier blue";
-    }
-
     private void rebuildHomeUi() {
         String query=search==null?"":search.getText().toString();
+        int previousSurface=activeSurface;
         applyAppearance();
         buildHome();
+        if(previousSurface==SurfaceNavigation.HOME)activeSurface=SurfaceNavigation.HOME;
         search.setText(query);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         render(query,false,true);
+        if(previousSurface==SurfaceNavigation.LIBRARY)openLibrary();
+        else if(previousSurface==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        else if(previousSurface==SurfaceNavigation.CONTROL)showControlCenter();
+        else if(previousSurface==SurfaceNavigation.SETTINGS)settings();
     }
 
     @Override protected void onResume() {
@@ -781,6 +1124,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if(smartEdgeOverlay!=null){closeSmartEdge();return;}
         if(activeSurface==SurfaceNavigation.LIBRARY&&activeLibraryScreen!=null&&activeLibraryScreen.handleBack())return;
         if(activeSurface==SurfaceNavigation.SETTINGS&&activeSurfaceView instanceof SettingsScreen&&((SettingsScreen)activeSurfaceView).handleBack())return;
         if(activeSurface!=SurfaceNavigation.HOME){navigateToSurface(SurfaceNavigation.HOME);return;}
@@ -799,10 +1143,12 @@ public class MainActivity extends Activity {
             clearImageDrawables(root);
             if(activeFolderDialog!=null)activeFolderDialog.dismiss();
             if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
+            closeSmartEdge();
+            if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
             releaseActiveSurface();
             activeSurfaceView=null;
             activeSurface=SurfaceNavigation.HOME;
-            setContentView(root);
+            setContentView(homeFrame);
             iconCache.trim();
             iconsTrimmed=true;
             if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
@@ -820,10 +1166,18 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         packageRefreshHandler.removeCallbacks(packageRefresh);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
+        if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
         releaseActiveSurface();
         activeSurfaceView=null;
         if(activeFolderDialog!=null)activeFolderDialog.dismiss();
+        if(widgetsListening)try {appWidgetHost.stopListening();}catch(RuntimeException ignored){}
+        widgetsListening=false;
+        if(batteryReceiverRegistered)try {unregisterReceiver(batteryReceiver);}catch(Exception ignored){}
+        batteryReceiverRegistered=false;
+        if(torchController!=null){torchController.turnOff();if(torchController.getParent() instanceof ViewGroup)((ViewGroup)torchController.getParent()).removeView(torchController);torchController=null;}
         if(receiverRegistered)try{unregisterReceiver(packageReceiver);}catch(Exception ignored){}
+        DRAWABLES.clear();
+        if(iconCache!=null)iconCache.trim();
         super.onDestroy();
     }
 }
