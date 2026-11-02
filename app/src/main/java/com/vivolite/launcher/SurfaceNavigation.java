@@ -32,7 +32,7 @@ final class SurfaceNavigation extends LinearLayout {
         item.setGravity(Gravity.CENTER);
         item.setFocusable(true);
         item.setContentDescription(LABELS[destination]);
-        int active = destination == selected;
+        boolean active = destination == selected;
         TextView glyph = new TextView(context);
         glyph.setText(GLYPHS[destination]);
         glyph.setTextSize(17);
