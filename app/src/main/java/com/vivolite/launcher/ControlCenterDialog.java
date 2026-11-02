@@ -1,6 +1,7 @@
 package com.vivolite.launcher;
 
 import android.app.Dialog;
+import android.media.AudioManager;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
@@ -21,8 +22,8 @@ public class ControlCenterDialog extends Dialog {
         panel.setPadding(Ui.dp(context,20),Ui.dp(context,18),Ui.dp(context,20),Ui.dp(context,20));
         panel.setBackground(Ui.panel(context,Ui.GLASS,28));
 
-        TextView heading = text(context,"CONTROL CENTRE",13,Ui.secondaryText());
-        heading.setLetterSpacing(0.12f);
+        TextView heading = text(context,"CONTROL CENTRE",12,Ui.primaryText());
+        heading.setLetterSpacing(0.15f);
         panel.addView(heading,new LinearLayout.LayoutParams(-1,Ui.dp(context,32)));
 
         LinearLayout row = new LinearLayout(context);
@@ -30,7 +31,8 @@ public class ControlCenterDialog extends Dialog {
         addTile(context,row,"Wi-Fi",()->wifi());
         addTile(context,row,"Bluetooth",()->bluetooth());
         addTile(context,row,"Sound",()->open(Settings.ACTION_SOUND_SETTINGS));
-        panel.addView(row,new LinearLayout.LayoutParams(-1,Ui.dp(context,76)));
+        LinearLayout.LayoutParams tileRow=new LinearLayout.LayoutParams(-1,Ui.dp(context,82));
+        tileRow.topMargin=Ui.dp(context,8);panel.addView(row,tileRow);
 
         TextView brightness = text(context,"BRIGHTNESS",11,Ui.secondaryText());
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1,Ui.dp(context,30));
@@ -61,6 +63,36 @@ public class ControlCenterDialog extends Dialog {
         });
         panel.addView(bar,new LinearLayout.LayoutParams(-1,Ui.dp(context,42)));
 
+        TextView volumeLabel = text(context,"VOLUME",11,Ui.secondaryText());
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(-1,Ui.dp(context,30));
+        vp.topMargin=Ui.dp(context,8); panel.addView(volumeLabel,vp);
+        SeekBar volume = new SeekBar(context);
+        AudioManager audio=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
+        if(audio!=null) {
+            int max=audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            volume.setMax(Math.max(1,max));
+            volume.setProgress(audio.getStreamVolume(AudioManager.STREAM_MUSIC));
+            volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar seek,int value,boolean user) {
+                    if(user)audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0);
+                }
+                public void onStartTrackingTouch(SeekBar seek) { }
+                public void onStopTrackingTouch(SeekBar seek) { }
+            });
+        }
+        panel.addView(volume,new LinearLayout.LayoutParams(-1,Ui.dp(context,38)));
+
+        TextView battery=text(context,batteryLabel(context),11,Ui.secondaryText());
+        LinearLayout.LayoutParams batteryParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,28));
+        batteryParams.topMargin=Ui.dp(context,4);panel.addView(battery,batteryParams);
+
+        TextView notifications=text(context,"VIEW NOTIFICATIONS",11,Ui.primaryText());
+        notifications.setGravity(Gravity.CENTER);
+        notifications.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,16));
+        LinearLayout.LayoutParams notificationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,40));
+        notificationParams.topMargin=Ui.dp(context,6);panel.addView(notifications,notificationParams);
+        notifications.setOnClickListener(v->{NotificationDialog dialog=new NotificationDialog(context);dialog.show();dismiss();});
+
         TextView settings = text(context,"OPEN ANDROID SETTINGS  ↗",12,Ui.primaryText());
         settings.setGravity(Gravity.CENTER);
         settings.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,18));
@@ -74,11 +106,15 @@ public class ControlCenterDialog extends Dialog {
     }
 
     private void addTile(Context c,LinearLayout row,String label,Runnable action) {
-        TextView tile=text(c,label,12,Ui.primaryText());
-        tile.setGravity(Gravity.CENTER);
+        LinearLayout tile=new LinearLayout(c);
+        tile.setOrientation(LinearLayout.VERTICAL);tile.setGravity(Gravity.CENTER);
         tile.setBackground(Ui.panel(c,Ui.GLASS_LIGHT,18));
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(c,64),1);
-        p.setMargins(Ui.dp(c,3),0,Ui.dp(c,3),0);
+        TextView glyph=text(c,label.equals("Wi-Fi")?"◉":label.equals("Bluetooth")?"ᛒ":"♫",20,Ui.primaryText());
+        glyph.setGravity(Gravity.CENTER);tile.addView(glyph,new LinearLayout.LayoutParams(-1,Ui.dp(c,30)));
+        TextView caption=text(c,label,10,Ui.secondaryText());caption.setGravity(Gravity.CENTER);
+        tile.addView(caption,new LinearLayout.LayoutParams(-1,Ui.dp(c,20)));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(c,76),1);
+        p.setMargins(Ui.dp(c,4),0,Ui.dp(c,4),0);
         row.addView(tile,p); tile.setOnClickListener(v->action.run());
         tile.setOnLongClickListener(v->{ if(label.equals("Wi-Fi"))open(Settings.ACTION_WIFI_SETTINGS); else if(label.equals("Bluetooth"))open(Settings.ACTION_BLUETOOTH_SETTINGS); else open(Settings.ACTION_SOUND_SETTINGS); return true;});
     }
@@ -105,6 +141,18 @@ public class ControlCenterDialog extends Dialog {
     private void open(String action) {
         try { getContext().startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
         catch(Exception ignored) { Toast.makeText(getContext(),"Setting unavailable",Toast.LENGTH_SHORT).show(); }
+    }
+
+    private String batteryLabel(Context context) {
+        try {
+            Intent status=context.registerReceiver(null,new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if(status!=null) {
+                int level=status.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
+                int scale=status.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,-1);
+                if(level>=0&&scale>0)return "BATTERY  ·  "+(level*100/scale)+"%";
+            }
+        } catch(Exception ignored) { }
+        return "BATTERY  ·  unavailable";
     }
 
     private TextView text(Context c,String value,int size,int color) {

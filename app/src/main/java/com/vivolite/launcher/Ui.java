@@ -11,10 +11,10 @@ public final class Ui {
     public static final int MUTED = Color.rgb(183,194,210);
     public static final int INK = Color.rgb(37,48,66);
     public static final int MUTED_INK = Color.rgb(101,115,134);
-    public static final int ACCENT_BLUE = Color.rgb(137,174,255);
+    public static final int ACCENT_BLUE = Color.rgb(232,235,240);
     public static int ACCENT = ACCENT_BLUE;
-    public static int GLASS = Color.argb(202, 238,246,255);
-    public static int GLASS_LIGHT = Color.argb(230, 249,252,255);
+    public static int GLASS = Color.argb(210, 31,34,40);
+    public static int GLASS_LIGHT = Color.argb(225, 48,51,58);
     public static final int BORDER = Color.argb(118,255,255,255);
     public static final int BLACK = Color.rgb(8,8,10);
     public static int ICON_DP = 46;
@@ -28,14 +28,14 @@ public final class Ui {
 
     public static void configure(boolean useDarkGlass, int accent, int iconSizeDp) {
         darkGlass = useDarkGlass;
-        ACCENT = accent;
+        ACCENT = ACCENT_BLUE;
         ICON_DP = iconSizeDp;
         if (darkGlass) {
-            GLASS = Color.argb(220, 24,34,49);
-            GLASS_LIGHT = Color.argb(232, 35,47,65);
+            GLASS = Color.argb(224, 20,21,24);
+            GLASS_LIGHT = Color.argb(232, 43,45,50);
         } else {
-            GLASS = Color.argb(202, 238,246,255);
-            GLASS_LIGHT = Color.argb(230, 249,252,255);
+            GLASS = Color.argb(218, 44,46,51);
+            GLASS_LIGHT = Color.argb(232, 62,64,70);
         }
     }
 

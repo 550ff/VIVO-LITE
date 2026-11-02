@@ -12,8 +12,10 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.List;
+import java.util.ArrayList;
 
 public class FolderDialog extends Dialog {
+    private final List<ImageView> iconViews = new ArrayList<>();
     public interface Listener {
         void onChanged(String title, List<String> children);
         void onLaunch(String key);
@@ -46,6 +48,7 @@ public class FolderDialog extends Dialog {
             cell.setGravity(Gravity.CENTER);
             cell.setOrientation(LinearLayout.VERTICAL);
             ImageView icon = new ImageView(context);
+            iconViews.add(icon);
             icon.setImageDrawable(cache.get(found.id, foundDrawable(context, found, apps)));
             int iconSize=Math.min(Ui.ICON_DP,42);
             cell.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,iconSize),Ui.dp(context,iconSize)));
@@ -95,5 +98,11 @@ public class FolderDialog extends Dialog {
 
     private static Drawable aDrawable(LauncherItem item) {
         return MainActivity.iconFor(item.id);
+    }
+
+    @Override public void dismiss() {
+        for (ImageView icon : iconViews) icon.setImageDrawable(null);
+        iconViews.clear();
+        super.dismiss();
     }
 }
