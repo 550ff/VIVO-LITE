@@ -1,6 +1,5 @@
 package com.vivolite.launcher;
 
-import android.app.Dialog;
 import android.media.AudioManager;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
@@ -14,12 +13,12 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class ControlCenterDialog extends Dialog {
-    public ControlCenterDialog(Context context) {
+public class ControlCenterScreen extends LinearLayout {
+    public ControlCenterScreen(Context context) {
         super(context);
-        LinearLayout panel = new LinearLayout(context);
+        LinearLayout panel = this;
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(Ui.dp(context,20),Ui.dp(context,18),Ui.dp(context,20),Ui.dp(context,20));
+        panel.setPadding(Ui.dp(context,24),Ui.dp(context,28),Ui.dp(context,24),Ui.dp(context,24));
         panel.setBackground(Ui.panel(context,Ui.GLASS,28));
 
         TextView heading = text(context,"CONTROL CENTRE",12,Ui.primaryText());
@@ -91,7 +90,7 @@ public class ControlCenterDialog extends Dialog {
         notifications.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,16));
         LinearLayout.LayoutParams notificationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,40));
         notificationParams.topMargin=Ui.dp(context,6);panel.addView(notifications,notificationParams);
-        notifications.setOnClickListener(v->{NotificationDialog dialog=new NotificationDialog(context);dialog.show();dismiss();});
+        notifications.setOnClickListener(v->((MainActivity)context).navigateToSurface(SurfaceNavigation.NOTIFICATIONS));
 
         TextView settings = text(context,"OPEN ANDROID SETTINGS  ↗",12,Ui.primaryText());
         settings.setGravity(Gravity.CENTER);
@@ -100,9 +99,10 @@ public class ControlCenterDialog extends Dialog {
         sp.topMargin=Ui.dp(context,12); panel.addView(settings,sp);
         settings.setOnClickListener(v->open(Settings.ACTION_SETTINGS));
 
-        setContentView(panel);
-        getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        getWindow().setLayout(Ui.dp(context,320),-2);
+        LinearLayout.LayoutParams navigationParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 58));
+        navigationParams.topMargin = Ui.dp(context, 14);
+        panel.addView(new SurfaceNavigation(context, SurfaceNavigation.CONTROL), navigationParams);
+
     }
 
     private void addTile(Context c,LinearLayout row,String label,Runnable action) {

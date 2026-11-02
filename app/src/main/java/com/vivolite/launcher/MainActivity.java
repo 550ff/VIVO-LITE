@@ -62,7 +62,10 @@ public class MainActivity extends Activity {
     private TextClock clock, date;
     private TextView count;
     private FolderDialog activeFolderDialog;
-    private AppLibraryDialog activeLibraryDialog;
+    private AppLibraryScreen activeLibraryScreen;
+    private View activeSurfaceView;
+    private NotificationScreen activeNotificationScreen;
+    private int activeSurface = SurfaceNavigation.HOME;
     private int columns = 4;
     private boolean receiverRegistered = false;
     private boolean iconsTrimmed = false;
@@ -125,11 +128,7 @@ public class MainActivity extends Activity {
         library.setOnClickListener(v->openLibrary());
         TextView control = pill("CONTROL");
         top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
-        control.setOnClickListener(v->{
-            ControlCenterDialog dialog=new ControlCenterDialog(this);
-            dialog.getWindow().setWindowAnimations(storage.animations()?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
-            dialog.show();
-        });
+        control.setOnClickListener(v->showControlCenter());
         root.addView(top);
 
         clock = new TextClock(this);
@@ -137,6 +136,19 @@ public class MainActivity extends Activity {
         clock.setGravity(Gravity.CENTER);
         clock.setTextSize(58); clock.setTextColor(Ui.WHITE);
         clock.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        final float[] clockTouchY={0f};
+        clock.setOnTouchListener((view,event)->{
+            if(event.getAction()==MotionEvent.ACTION_DOWN){clockTouchY[0]=event.getY();return true;}
+            if(event.getAction()==MotionEvent.ACTION_UP){
+                float delta=event.getY()-clockTouchY[0];
+                if(Math.abs(delta)>Ui.dp(this,42)) {
+                    if(delta<0)openLibrary();
+                    else showControlCenter();
+                }
+                return true;
+            }
+            return true;
+        });
         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,70));
         cp.topMargin=Ui.dp(this,11); root.addView(clock,cp);
 
@@ -181,10 +193,9 @@ public class MainActivity extends Activity {
             dpock.setMargins(Ui.dp(this,8),Ui.dp(this,11),Ui.dp(this,8),0); root.addView(dock,dpock);
         }
 
-        TextView footer=text("MADE FOR YOUR DAY",8,Ui.MUTED,false);
-        footer.setLetterSpacing(0.12f);
-        footer.setGravity(Gravity.CENTER);
-        root.addView(footer,new LinearLayout.LayoutParams(-1,Ui.dp(this,19)));
+        LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,58));
+        navigationParams.topMargin=Ui.dp(this,7);
+        root.addView(new SurfaceNavigation(this,SurfaceNavigation.HOME),navigationParams);
         setContentView(root);
 
         search.addTextChangedListener(new TextWatcher() {
@@ -355,6 +366,8 @@ public class MainActivity extends Activity {
             ImageView icon=new ImageView(this);
             Drawable d=DRAWABLES.get(item.id);
             if(d!=null)icon.setImageDrawable(d);
+            icon.setBackground(Ui.iconPlate(this));
+            icon.setPadding(Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3));
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             int available= Math.max(32,(getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40))/columns-8);
             int iconSize=Ui.dp(this,Math.min(Ui.ICON_DP,available));
@@ -532,6 +545,7 @@ public class MainActivity extends Activity {
     private void launch(String id) {
         LauncherItem a=findApp(id);
         if(a==null)return;
+        if(activeSurface!=SurfaceNavigation.HOME)navigateToSurface(SurfaceNavigation.HOME);
         Intent intent=new Intent(Intent.ACTION_MAIN);intent.addCategory(Intent.CATEGORY_LAUNCHER);
         intent.setComponent(new ComponentName(a.packageName,a.className));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
@@ -568,6 +582,8 @@ public class MainActivity extends Activity {
 
     private void addDockIcon(LauncherItem app) {
         ImageView icon=new ImageView(this);icon.setTag(app.id);
+        icon.setBackground(Ui.iconPlate(this));
+        icon.setPadding(Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4));
         icon.setImageDrawable(DRAWABLES.get(app.id));icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,Math.min(Ui.ICON_DP,48)),1);
         dock.addView(icon,p);
@@ -601,12 +617,12 @@ public class MainActivity extends Activity {
     private void settings() {
         String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system"};
         String[] descriptions={"Wallpaper, accent, glass and icons","Grid, clock and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts"};
-        SettingsHubDialog dialog=new SettingsHubDialog(this,sections,descriptions,storage.animations(),new SettingsHubDialog.Listener(){
+        SettingsScreen screen=new SettingsScreen(this,sections,descriptions,storage.animations(),new SettingsScreen.Listener(){
             public String[] options(int category){return settingsOptions(category);}
             public String[] descriptions(int category){return settingsDescriptions(category);}
             public void onSelect(int category,int option){applySetting(category,option);}
         });
-        dialog.show();
+        showSurface(screen,SurfaceNavigation.SETTINGS);
     }
 
     private String[] settingsOptions(int section) {
@@ -621,7 +637,7 @@ public class MainActivity extends Activity {
     private String[] settingsDescriptions(int section) {
         if(section==0)return new String[]{"Choose one of the included static gradient wallpapers.","Switch between light and dark glass surfaces.","Choose the displayed app icon size. Accent colours are intentionally monochrome."};
         if(section==1)return new String[]{"Toggle between four and five home grid columns.","Show or hide the home clock and date.","Show or hide the favourites dock."};
-        if(section==2)return new String[]{"Enable or disable launcher view and dialog animations.","Make hidden apps visible again.","Re-query installed launchable apps."};
+        if(section==2)return new String[]{"Enable or disable launcher page and interaction animations.","Make hidden apps visible again.","Re-query installed launchable apps."};
         if(section==3)return new String[]{"View notifications only when Android Notification Access is enabled.","Open Android's notification access settings."};
         return new String[]{"Open Android Home app selection.","Open Android display settings.","Open Android sound settings."};
     }
@@ -655,17 +671,46 @@ public class MainActivity extends Activity {
     }
 
     private void openLibrary() {
-        AppLibraryDialog dialog = new AppLibraryDialog(this, apps, this::launch);
-        activeLibraryDialog=dialog;
-        dialog.setOnDismissListener(d->{if(activeLibraryDialog==dialog)activeLibraryDialog=null;});
-        dialog.getWindow().setWindowAnimations(storage.animations()?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
-        dialog.show();
+        AppLibraryScreen screen = new AppLibraryScreen(this, apps, this::launch);
+        showSurface(screen,SurfaceNavigation.LIBRARY);
+        activeLibraryScreen=screen;
     }
 
     private void showNotifications() {
-        NotificationDialog dialog=new NotificationDialog(this);
-        dialog.getWindow().setWindowAnimations(storage.animations()?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
-        dialog.show();
+        NotificationScreen screen=new NotificationScreen(this);
+        showSurface(screen,SurfaceNavigation.NOTIFICATIONS);
+        activeNotificationScreen=screen;
+    }
+
+    private void showControlCenter() {
+        showSurface(new ControlCenterScreen(this),SurfaceNavigation.CONTROL);
+    }
+
+    private void showSurface(View screen,int destination) {
+        releaseActiveSurface();
+        activeSurfaceView=screen;
+        activeSurface=destination;
+        setContentView(screen);
+        if(storage.animations())Ui.enter(screen,true,10);
+    }
+
+    public void navigateToSurface(int destination) {
+        if(destination==activeSurface)return;
+        releaseActiveSurface();
+        activeSurfaceView=null;
+        activeSurface=SurfaceNavigation.HOME;
+        if(destination==SurfaceNavigation.HOME){setContentView(root);return;}
+        if(destination==SurfaceNavigation.LIBRARY)openLibrary();
+        else if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
+        else if(destination==SurfaceNavigation.SETTINGS)settings();
+    }
+
+    public boolean isSurfaceActive(int surface) { return activeSurface==surface; }
+
+    private void releaseActiveSurface() {
+        if(activeLibraryScreen!=null){activeLibraryScreen.onHidden();activeLibraryScreen=null;}
+        if(activeNotificationScreen!=null){activeNotificationScreen.onHidden();activeNotificationScreen=null;}
     }
 
     private void chooseWallpaper() {
@@ -724,7 +769,9 @@ public class MainActivity extends Activity {
             iconsTrimmed=false;
             packagesDirty=false;
             loadApps();
+            if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();
         }
+        if(activeNotificationScreen!=null)activeNotificationScreen.onShown();
     }
 
     @Override protected void onPause() {
@@ -734,6 +781,9 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if(activeSurface==SurfaceNavigation.LIBRARY&&activeLibraryScreen!=null&&activeLibraryScreen.handleBack())return;
+        if(activeSurface==SurfaceNavigation.SETTINGS&&activeSurfaceView instanceof SettingsScreen&&((SettingsScreen)activeSurfaceView).handleBack())return;
+        if(activeSurface!=SurfaceNavigation.HOME){navigateToSurface(SurfaceNavigation.HOME);return;}
         if(search!=null&&search.length()>0){
             search.setText("");
             try { ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(search.getWindowToken(),0); }
@@ -748,7 +798,11 @@ public class MainActivity extends Activity {
             DRAWABLES.clear();
             clearImageDrawables(root);
             if(activeFolderDialog!=null)activeFolderDialog.dismiss();
-            if(activeLibraryDialog!=null)activeLibraryDialog.dismiss();
+            if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
+            releaseActiveSurface();
+            activeSurfaceView=null;
+            activeSurface=SurfaceNavigation.HOME;
+            setContentView(root);
             iconCache.trim();
             iconsTrimmed=true;
             if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
@@ -766,6 +820,9 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         packageRefreshHandler.removeCallbacks(packageRefresh);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
+        releaseActiveSurface();
+        activeSurfaceView=null;
+        if(activeFolderDialog!=null)activeFolderDialog.dismiss();
         if(receiverRegistered)try{unregisterReceiver(packageReceiver);}catch(Exception ignored){}
         super.onDestroy();
     }

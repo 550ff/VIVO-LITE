@@ -46,6 +46,10 @@ public final class Ui {
         return new GlassDrawable(color, dp(c,radius), darkGlass);
     }
 
+    public static Drawable iconPlate(Context c) {
+        return new GlassDrawable(GLASS_LIGHT, dp(c,14), darkGlass);
+    }
+
     public static void enter(View view, boolean enabled, int distance) {
         if (!enabled) return;
         view.setAlpha(0f);

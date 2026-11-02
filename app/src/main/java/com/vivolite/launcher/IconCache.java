@@ -3,6 +3,9 @@ package com.vivolite.launcher;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.ColorFilter;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.LruCache;
@@ -28,7 +31,15 @@ public class IconCache {
             bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bitmap);
             source.setBounds(0, 0, size, size);
-            source.draw(canvas);
+            ColorFilter previous = source.getColorFilter();
+            ColorMatrix monochrome = new ColorMatrix();
+            monochrome.setSaturation(0f);
+            try {
+                source.setColorFilter(new ColorMatrixColorFilter(monochrome));
+                source.draw(canvas);
+            } finally {
+                source.setColorFilter(previous);
+            }
             cache.put(key, bitmap);
         }
         return new BitmapDrawable(context.getResources(), bitmap);

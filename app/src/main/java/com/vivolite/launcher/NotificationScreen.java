@@ -1,13 +1,11 @@
 package com.vivolite.launcher;
 
-import android.app.Dialog;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.Window;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -18,20 +16,24 @@ import android.graphics.drawable.Drawable;
 import android.util.LruCache;
 
 /** Displays actual notifications only when Notification Access is enabled by the user. */
-public final class NotificationDialog extends Dialog {
+public final class NotificationScreen extends LinearLayout {
     private final Context context;
     private final LinearLayout list;
     private final LruCache<String,Drawable> appIcons=new LruCache<>(16);
 
-    public NotificationDialog(Context context) {
+    public NotificationScreen(Context context) {
         super(context);
         this.context=context;
-        LinearLayout panel=new LinearLayout(context);
+        LinearLayout panel=this;
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(Ui.dp(context,18),Ui.dp(context,18),Ui.dp(context,18),Ui.dp(context,14));
+        panel.setPadding(Ui.dp(context,22),Ui.dp(context,24),Ui.dp(context,22),Ui.dp(context,18));
         panel.setBackground(Ui.panel(context,Ui.GLASS,24));
-        TextView heading=text("NOTIFICATIONS",13,Ui.primaryText(),true);
-        panel.addView(heading,new LinearLayout.LayoutParams(-1,Ui.dp(context,34)));
+        LinearLayout header=new LinearLayout(context);header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back=text("‹",30,Ui.primaryText(),false);back.setGravity(Gravity.CENTER);
+        header.addView(back,new LinearLayout.LayoutParams(Ui.dp(context,48),Ui.dp(context,44)));
+        back.setOnClickListener(v->((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME));
+        TextView heading=text("NOTIFICATIONS",13,Ui.primaryText(),true);heading.setLetterSpacing(0.12f);
+        header.addView(heading,new LinearLayout.LayoutParams(0,Ui.dp(context,44),1));panel.addView(header);
         ScrollView scroll=new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
         list=new LinearLayout(context);
@@ -50,13 +52,9 @@ public final class NotificationDialog extends Dialog {
             else android.widget.Toast.makeText(context,"Notifications could not be cleared",android.widget.Toast.LENGTH_SHORT).show();
             refresh();
         });
-        setContentView(panel);
-        Window window=getWindow();
-        if(window!=null){
-            window.setBackgroundDrawableResource(android.R.color.transparent);
-            window.setLayout(Math.min(Ui.dp(context,400),context.getResources().getDisplayMetrics().widthPixels-Ui.dp(context,28)),
-                    Math.min(Ui.dp(context,600),context.getResources().getDisplayMetrics().heightPixels-Ui.dp(context,56)));
-        }
+        LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,58));
+        navigationParams.topMargin=Ui.dp(context,10);
+        panel.addView(new SurfaceNavigation(context,SurfaceNavigation.NOTIFICATIONS),navigationParams);
         refresh();
     }
 
@@ -99,8 +97,8 @@ public final class NotificationDialog extends Dialog {
         list.addView(text,new LinearLayout.LayoutParams(-1,-2));
     }
 
-    @Override protected void onStart() { super.onStart(); refresh(); }
-    @Override protected void onStop() { list.removeAllViews();appIcons.evictAll();super.onStop(); }
+    void onShown() { refresh(); }
+    void onHidden() { list.removeAllViews();appIcons.evictAll(); }
 
     private boolean hasAccess() {
         String enabled=android.provider.Settings.Secure.getString(context.getContentResolver(),"enabled_notification_listeners");
@@ -138,7 +136,7 @@ public final class NotificationDialog extends Dialog {
         card.setOnClickListener(v->{
             try { PendingIntent pending=entry.contentIntent;if(pending!=null)pending.send(); }
             catch(Exception ignored) { }
-            dismiss();
+            ((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME);
         });
         card.setOnLongClickListener(v->{
             if(LauncherNotificationService.dismiss(entry.key))refresh();

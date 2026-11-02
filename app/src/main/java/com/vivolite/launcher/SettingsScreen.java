@@ -1,16 +1,14 @@
 package com.vivolite.launcher;
 
-import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
-import android.view.Window;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Lightweight in-dialog settings hub with category navigation and actionable rows. */
-public final class SettingsHubDialog extends Dialog {
+/** Launcher-owned settings page with category navigation and actionable rows. */
+public final class SettingsScreen extends LinearLayout {
     public interface Listener {
         String[] options(int category);
         String[] descriptions(int category);
@@ -25,10 +23,10 @@ public final class SettingsHubDialog extends Dialog {
     private final TextView title, back;
     private int activeCategory=-1;
 
-    public SettingsHubDialog(Context context,String[] categories,String[] subtitles,boolean animations,Listener listener) {
+    public SettingsScreen(Context context,String[] categories,String[] subtitles,boolean animations,Listener listener) {
         super(context);
         this.context=context;this.categories=categories;this.subtitles=subtitles;this.listener=listener;
-        panel=new LinearLayout(context);panel.setOrientation(LinearLayout.VERTICAL);
+        panel=this;panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(Ui.dp(context,18),Ui.dp(context,16),Ui.dp(context,18),Ui.dp(context,14));
         panel.setBackground(Ui.panel(context,Ui.GLASS,24));
         LinearLayout header=new LinearLayout(context);header.setGravity(Gravity.CENTER_VERTICAL);
@@ -41,14 +39,10 @@ public final class SettingsHubDialog extends Dialog {
         rows=new LinearLayout(context);rows.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(rows,new ScrollView.LayoutParams(-1,-2));
         panel.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        setContentView(panel);
-        Window window=getWindow();if(window!=null){
-            window.setBackgroundDrawableResource(android.R.color.transparent);
-            window.setLayout(Math.min(Ui.dp(context,400),context.getResources().getDisplayMetrics().widthPixels-Ui.dp(context,28)),
-                    Math.min(Ui.dp(context,620),context.getResources().getDisplayMetrics().heightPixels-Ui.dp(context,56)));
-            window.setWindowAnimations(animations?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
-        }
-        back.setOnClickListener(v->{if(activeCategory>=0)showCategories();else dismiss();});
+        LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,58));
+        navigationParams.topMargin=Ui.dp(context,10);
+        panel.addView(new SurfaceNavigation(context,SurfaceNavigation.SETTINGS),navigationParams);
+        back.setOnClickListener(v->{if(activeCategory>=0)showCategories();else ((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME);});
         showCategories();
     }
 
@@ -70,9 +64,9 @@ public final class SettingsHubDialog extends Dialog {
         }
     }
 
-    @Override public void onBackPressed() {
-        if(activeCategory>=0)showCategories();
-        else super.onBackPressed();
+    boolean handleBack() {
+        if(activeCategory>=0){showCategories();return true;}
+        return false;
     }
 
     private void showOptions(int category) {
@@ -81,7 +75,11 @@ public final class SettingsHubDialog extends Dialog {
         String[] descriptions=listener.descriptions(category);
         for(int i=0;i<options.length;i++) {
             final int option=i;
-            addRow(options[i],i<descriptions.length?descriptions[i]:"",()->{listener.onSelect(category,option);dismiss();});
+            addRow(options[i],i<descriptions.length?descriptions[i]:"",()->{
+                listener.onSelect(category,option);
+                MainActivity activity=(MainActivity)context;
+                if(activity.isSurfaceActive(SurfaceNavigation.SETTINGS))activity.navigateToSurface(SurfaceNavigation.HOME);
+            });
         }
     }
 
