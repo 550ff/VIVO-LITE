@@ -16,6 +16,8 @@ import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -60,8 +62,17 @@ public class MainActivity extends Activity {
     private TextView count;
     private int columns = 4;
     private boolean receiverRegistered = false;
+    private boolean iconsTrimmed = false;
+    private boolean activityResumed = false;
+    private boolean packagesDirty = false;
     private String draggingId;
     private String armedDragId;
+    private final Handler packageRefreshHandler = new Handler(Looper.getMainLooper());
+    private final Runnable packageRefresh = () -> {
+        if(activityResumed)loadApps();else packagesDirty=true;
+    };
+    private final Handler searchRenderHandler = new Handler(Looper.getMainLooper());
+    private Runnable searchRender;
 
     public static Drawable iconFor(String id) { return DRAWABLES.get(id); }
 
@@ -74,6 +85,7 @@ public class MainActivity extends Activity {
         storage = new LauncherStorage(this);
         iconCache = new IconCache(this);
         columns = storage.getColumns();
+        applyAppearance();
         hidden.addAll(storage.getHidden());
         favorites.addAll(storage.getFavorites());
         buildHome();
@@ -85,45 +97,63 @@ public class MainActivity extends Activity {
         dock = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(Ui.dp(this,18),Ui.dp(this,14),Ui.dp(this,18),Ui.dp(this,8));
-        root.setBackgroundResource(com.vivolite.launcher.R.drawable.wallpaper_dark);
+        root.setPadding(Ui.dp(this,20),Ui.dp(this,13),Ui.dp(this,20),Ui.dp(this,7));
+        root.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView brand = text("V I V O   L I T E",11,Ui.WHITE,true);
-        top.addView(brand,new LinearLayout.LayoutParams(0,Ui.dp(this,34),1));
+        LinearLayout brandBlock=new LinearLayout(this);
+        brandBlock.setOrientation(LinearLayout.VERTICAL);
+        brandBlock.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brand = text("VIVO LITE",12,Ui.WHITE,true);
+        brand.setLetterSpacing(0.15f);
+        brandBlock.addView(brand);
+        TextView strap=text("A CALMER HOME",8,Ui.MUTED,false);
+        strap.setLetterSpacing(0.12f);
+        brandBlock.addView(strap);
+        top.addView(brandBlock,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
+        TextView style = pill("STYLE");
+        LinearLayout.LayoutParams styleP=new LinearLayout.LayoutParams(Ui.dp(this,62),Ui.dp(this,34));
+        styleP.rightMargin=Ui.dp(this,7);top.addView(style,styleP);
+        style.setOnClickListener(v->settings());
         TextView control = pill("CONTROL");
-        top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,94),Ui.dp(this,34)));
-        control.setOnClickListener(v->new ControlCenterDialog(this).show());
+        top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
+        control.setOnClickListener(v->{
+            ControlCenterDialog dialog=new ControlCenterDialog(this);
+            dialog.getWindow().setWindowAnimations(storage.animations()?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
+            dialog.show();
+        });
         root.addView(top);
 
         clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
-        clock.setTextSize(54); clock.setTextColor(Ui.WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
-        cp.topMargin=Ui.dp(this,13); root.addView(clock,cp);
+        clock.setTextSize(59); clock.setTextColor(Ui.WHITE);
+        clock.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,70));
+        cp.topMargin=Ui.dp(this,11); root.addView(clock,cp);
 
         date = new TextClock(this);
         date.setFormat24Hour("EEEE  ·  d MMMM"); date.setFormat12Hour("EEEE  ·  d MMMM");
-        date.setTextSize(12); date.setTextColor(Ui.MUTED);
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,26));
-        dp.bottomMargin=Ui.dp(this,14); root.addView(date,dp);
+        date.setTextSize(13); date.setTextColor(Ui.MUTED);
+        date.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
+        dp.bottomMargin=Ui.dp(this,16); root.addView(date,dp);
         if(!storage.showClock()){clock.setVisibility(View.GONE);date.setVisibility(View.GONE);}
 
         search = new EditText(this);
-        search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.WHITE);
-        search.setHintTextColor(Ui.MUTED); search.setHint("⌕   Search apps");
+        search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.primaryText());
+        search.setHintTextColor(Ui.secondaryText()); search.setHint("⌕   Search your apps");
         search.setPadding(Ui.dp(this,16),0,Ui.dp(this,16),0);
-        search.setBackground(Ui.panel(this,Ui.GLASS,22));
+        search.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,22));
         search.setCompoundDrawablePadding(Ui.dp(this,8));
-        root.addView(search,new LinearLayout.LayoutParams(-1,Ui.dp(this,46)));
+        root.addView(search,new LinearLayout.LayoutParams(-1,Ui.dp(this,48)));
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("APPLICATIONS",10,Ui.MUTED,true);
-        heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,40),1));
-        count=text("0",10,Ui.MUTED,false); heading.addView(count);
+        TextView title=text("YOUR APPS",10,Ui.MUTED,true);
+        title.setLetterSpacing(0.14f);
+        heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
+        count=text("0 ITEMS",9,Ui.MUTED,false); count.setLetterSpacing(0.06f); heading.addView(count);
         root.addView(heading);
 
         ScrollView scroll=new ScrollView(this);
@@ -136,22 +166,29 @@ public class MainActivity extends Activity {
         if(storage.showDock()) {
             dock=new LinearLayout(this);
             dock.setGravity(Gravity.CENTER_VERTICAL);
-            dock.setPadding(Ui.dp(this,8),Ui.dp(this,6),Ui.dp(this,8),Ui.dp(this,6));
-            dock.setBackground(Ui.panel(this,Ui.GLASS,24));
-            LinearLayout.LayoutParams dpock=new LinearLayout.LayoutParams(-1,Ui.dp(this,66));
-            dpock.topMargin=Ui.dp(this,8); root.addView(dock,dpock);
+            dock.setPadding(Ui.dp(this,10),Ui.dp(this,8),Ui.dp(this,10),Ui.dp(this,8));
+            dock.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,26));
+            LinearLayout.LayoutParams dpock=new LinearLayout.LayoutParams(-1,Ui.dp(this,68));
+            dpock.setMargins(Ui.dp(this,8),Ui.dp(this,11),Ui.dp(this,8),0); root.addView(dock,dpock);
         }
 
-        TextView footer=text("PURE  ·  FLUID  ·  MINIMAL",8,Ui.MUTED,false);
+        TextView footer=text("MADE FOR YOUR DAY",8,Ui.MUTED,false);
+        footer.setLetterSpacing(0.12f);
         footer.setGravity(Gravity.CENTER);
-        root.addView(footer,new LinearLayout.LayoutParams(-1,Ui.dp(this,22)));
+        root.addView(footer,new LinearLayout.LayoutParams(-1,Ui.dp(this,19)));
         setContentView(root);
 
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s,int st,int c,int a){}
-            public void onTextChanged(CharSequence s,int st,int before,int c){render(s.toString());}
+            public void onTextChanged(CharSequence s,int st,int before,int c){scheduleSearchRender(s.toString());}
             public void afterTextChanged(Editable e){}
         });
+    }
+
+    private void scheduleSearchRender(String query) {
+        if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
+        searchRender=()->render(query,false,false);
+        searchRenderHandler.postDelayed(searchRender,100);
     }
 
     private TextView text(String value,int size,int color,boolean bold) {
@@ -161,8 +198,23 @@ public class MainActivity extends Activity {
     }
 
     private TextView pill(String value) {
-        TextView t=text(value,10,Ui.WHITE,true);t.setGravity(Gravity.CENTER);
+        TextView t=text(value,9,Ui.primaryText(),true);t.setGravity(Gravity.CENTER);
+        t.setLetterSpacing(0.04f);
         t.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,18));return t;
+    }
+
+    private void applyAppearance() {
+        Ui.configure(storage.darkGlass(),storage.getAccent(),storage.getIconSize());
+        int accent=storage.getAccent();
+        int accentStyle=accent==0xFFB49AFF?com.vivolite.launcher.R.style.AccentViolet:
+                accent==0xFF83D7C2?com.vivolite.launcher.R.style.AccentMint:
+                accent==0xFFFFA6B7?com.vivolite.launcher.R.style.AccentRose:com.vivolite.launcher.R.style.AccentGlacier;
+        getTheme().applyStyle(accentStyle,true);
+        getTheme().applyStyle(storage.darkGlass()?com.vivolite.launcher.R.style.UseDarkAlerts:
+                com.vivolite.launcher.R.style.UseLightAlerts,true);
+        getWindow().setStatusBarColor(Color.rgb(13,19,30));
+        getWindow().setNavigationBarColor(Color.rgb(13,19,30));
+        if(root!=null)root.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
     }
 
     private void loadApps() {
@@ -194,8 +246,12 @@ public class MainActivity extends Activity {
         List<String> order=storage.getOrder("home_order");
         JSONObject folders=storage.getFolders();
         Set<String> consumed=new HashSet<>();
+        Map<String,LauncherItem> restoredFolders=new HashMap<>();
+
+        // Claim each installed app for at most one folder before restoring top-level entries.
         for(String id:order) {
             if(id.startsWith("folder:")) {
+                if(restoredFolders.containsKey(id))continue;
                 try {
                     JSONObject data=folders.optJSONObject(id);
                     if(data!=null) {
@@ -203,13 +259,24 @@ public class MainActivity extends Activity {
                         JSONArray children=data.optJSONArray("children");
                         if(children!=null)for(int i=0;i<children.length();i++) {
                             String child=children.optString(i);
-                            if(byId.containsKey(child))folder.children.add(child);
+                            if(byId.containsKey(child)&&consumed.add(child))folder.children.add(child);
                         }
-                        homeItems.add(folder);
-                        consumed.addAll(folder.children);
+                        restoredFolders.put(id,folder);
                     }
                 } catch(Exception ignored) {}
-            } else if(byId.containsKey(id) && !consumed.contains(id)) homeItems.add(byId.get(id));
+            }
+        }
+        Set<String> added=new HashSet<>();
+        for(String id:order) {
+            if(id.startsWith("folder:")) {
+                LauncherItem folder=restoredFolders.get(id);
+                if(folder!=null&&!added.contains(id)) {
+                    homeItems.add(folder);
+                    added.add(id);
+                }
+            } else if(byId.containsKey(id)&&!consumed.contains(id)&&added.add(id)) {
+                homeItems.add(byId.get(id));
+            }
         }
         for(LauncherItem a:apps)if(!consumed.contains(a.id)&&!contains(homeItems,a.id))homeItems.add(a);
         saveHomeOrder();
@@ -236,6 +303,10 @@ public class MainActivity extends Activity {
     }
 
     private void render(String filter) {
+        render(filter,true,true);
+    }
+
+    private void render(String filter,boolean animate,boolean refreshDock) {
         if(grid==null)return;
         grid.removeAllViews();
         ArrayList<LauncherItem> visible=new ArrayList<>();
@@ -251,21 +322,21 @@ public class MainActivity extends Activity {
             } else if(!hidden.contains(item.id)&&item.title.toLowerCase(Locale.ROOT).contains(q))visible.add(item);
         }
         count.setText(visible.size()+" ITEMS");
-        int totalWidth=getResources().getDisplayMetrics().widthPixels-Ui.dp(this,36);
+        int totalWidth=getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40);
         int cell=totalWidth/columns;
         grid.setColumnCount(columns);
         for(int i=0;i<visible.size();i++) {
             LauncherItem item=visible.get(i);
-            LinearLayout cellView=makeCell(item);
+            LinearLayout cellView=makeCell(item,animate&&q.isEmpty()&&i<columns);
             GridLayout.LayoutParams p=new GridLayout.LayoutParams();
             p.width=cell;p.height=Ui.dp(this,104);
             p.setMargins(0,0,0,0);
             grid.addView(cellView,p);
         }
-        renderDock();
+        if(refreshDock)renderDock();
     }
 
-    private LinearLayout makeCell(LauncherItem item) {
+    private LinearLayout makeCell(LauncherItem item,boolean animate) {
         LinearLayout cell=new LinearLayout(this);
         cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(Gravity.CENTER);
         cell.setPadding(Ui.dp(this,2),Ui.dp(this,8),Ui.dp(this,2),Ui.dp(this,4));
@@ -276,9 +347,12 @@ public class MainActivity extends Activity {
             Drawable d=DRAWABLES.get(item.id);
             if(d!=null)icon.setImageDrawable(d);
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            int available= Math.max(32,(getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40))/columns-8);
+            int iconSize=Ui.dp(this,Math.min(Ui.ICON_DP,available));
             iconView=icon;
+            cell.addView(iconView,new LinearLayout.LayoutParams(iconSize,iconSize));
         }
-        cell.addView(iconView,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
+        if(item.isFolder())cell.addView(iconView,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
         TextView name=text(item.title,10,Ui.WHITE,false);
         name.setGravity(Gravity.CENTER);name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -300,7 +374,7 @@ public class MainActivity extends Activity {
         });
         cell.setOnDragListener((v,event)->handleDrop(v,item,event));
         if(item.isFolder())cell.setOnClickListener(v->openFolder(item));
-        Ui.enter(cell,storage.animations(),5);
+        if(animate&&storage.animations())Ui.enter(cell,true,4);
         return cell;
     }
 
@@ -332,8 +406,12 @@ public class MainActivity extends Activity {
                 LauncherItem sourceItem=findHome(source);
                 if(sourceItem==null)return true;
                 if(targetItem.isFolder()) {
-                    if(!sourceItem.isFolder()&&!targetItem.children.contains(source)) {
-                        targetItem.children.add(source);homeItems.remove(sourceItem);
+                    if(!sourceItem.isFolder()) {
+                        for(LauncherItem folder:homeItems) {
+                            if(folder.isFolder()&&folder!=targetItem)folder.children.remove(source);
+                        }
+                        if(!targetItem.children.contains(source))targetItem.children.add(source);
+                        homeItems.remove(sourceItem);
                     }
                 } else if(!sourceItem.isFolder()) {
                     // Center drop merges; edge drop reorders.
@@ -374,7 +452,7 @@ public class MainActivity extends Activity {
             if(item.isFolder()) {
                 if(which==0)openFolder(item);
                 if(which==1)renameFolder(item);
-                if(which==2){homeItems.remove(item);saveHomeOrder();render("");}
+                if(which==2){restoreFolderChildren(item);homeItems.remove(item);saveHomeOrder();render("");}
             } else {
                 if(which==0)launch(item.id);
                 if(which==1){if(!favorites.add(item.id))favorites.remove(item.id);storage.setFavorites(favorites);render(search.getText().toString());}
@@ -385,25 +463,53 @@ public class MainActivity extends Activity {
         }).show();
     }
 
+    private void restoreFolderChildren(LauncherItem folder) {
+        int index=Math.max(0,homeItems.indexOf(folder));
+        for(String child:folder.children) {
+            LauncherItem app=findApp(child);
+            if(app!=null&&!contains(homeItems,child)&&!isChildOfAnotherFolder(child,folder)) {
+                homeItems.add(Math.min(index++,homeItems.size()),app);
+            }
+        }
+    }
+
+    private boolean isChildOfAnotherFolder(String appId,LauncherItem except) {
+        for(LauncherItem item:homeItems) {
+            if(item.isFolder()&&item!=except&&item.children.contains(appId))return true;
+        }
+        return false;
+    }
+
     private void startMove(LauncherItem item) {
         armedDragId = item.id;
         Toast.makeText(this,"Now touch this app and drag it onto another item",Toast.LENGTH_LONG).show();
     }
 
     private void openFolder(LauncherItem folder) {
+        ArrayList<String> previousChildren=new ArrayList<>(folder.children);
         FolderDialog dialog=new FolderDialog(this,folder,apps,iconCache,storage.animations(),new FolderDialog.Listener(){
             public void onChanged(String title,List<String> children) {
+                int index=Math.max(0,homeItems.indexOf(folder)+1);
+                for(String child:previousChildren) {
+                    if(!children.contains(child)&&!isChildOfAnotherFolder(child,folder)&&!contains(homeItems,child)) {
+                        LauncherItem app=findApp(child);
+                        if(app!=null)homeItems.add(Math.min(index++,homeItems.size()),app);
+                    }
+                }
+                previousChildren.clear();
+                previousChildren.addAll(children);
                 folder.title=title.isEmpty()?"Folder":title;
                 saveHomeOrder();render(search.getText().toString());
             }
             public void onLaunch(String key){launch(key);}
         });
+        dialog.getWindow().setWindowAnimations(storage.animations()?com.vivolite.launcher.R.style.VivoDialogAnimation:0);
         dialog.show();
-        Ui.enter(dialog.getWindow().getDecorView(),storage.animations(),8);
     }
 
     private void renameFolder(LauncherItem folder) {
-        EditText input=new EditText(this);input.setText(folder.title);input.setTextColor(Ui.WHITE);
+        EditText input=new EditText(this);input.setText(folder.title);input.setTextColor(Ui.primaryText());
+        input.setHintTextColor(Ui.secondaryText());
         new AlertDialog.Builder(this).setTitle("Rename folder").setView(input)
             .setPositiveButton("SAVE",(d,w)->{folder.title=input.getText().toString().trim();if(folder.title.isEmpty())folder.title="Folder";saveHomeOrder();render("");})
             .setNegativeButton("CANCEL",null).show();
@@ -415,7 +521,10 @@ public class MainActivity extends Activity {
         Intent intent=new Intent(Intent.ACTION_MAIN);intent.addCategory(Intent.CATEGORY_LAUNCHER);
         intent.setComponent(new ComponentName(a.packageName,a.className));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        try { startActivity(intent); } catch(Exception e) { Toast.makeText(this,"Unable to open app",Toast.LENGTH_SHORT).show(); }
+        try {
+            startActivity(intent);
+            if(storage.animations())overridePendingTransition(com.vivolite.launcher.R.anim.app_enter,com.vivolite.launcher.R.anim.app_exit);
+        } catch(Exception e) { Toast.makeText(this,"Unable to open app",Toast.LENGTH_SHORT).show(); }
     }
 
     private void openAppInfo(LauncherItem a) {
@@ -433,7 +542,7 @@ public class MainActivity extends Activity {
         }
         for(LauncherItem app:apps)if(favorites.contains(app.id)&&!hidden.contains(app.id)&&!dockContains(app.id)) {addDockIcon(app);shown++;}
         if(shown==0) {
-            TextView hint=text("LONG-PRESS AN APP  ·  ADD TO FAVOURITES",9,Ui.MUTED,false);
+            TextView hint=text("LONG-PRESS AN APP  ·  ADD TO FAVOURITES",9,Ui.secondaryText(),false);
             hint.setGravity(Gravity.CENTER);dock.addView(hint,new LinearLayout.LayoutParams(-1,-1));
         }
     }
@@ -446,7 +555,7 @@ public class MainActivity extends Activity {
     private void addDockIcon(LauncherItem app) {
         ImageView icon=new ImageView(this);icon.setTag(app.id);
         icon.setImageDrawable(DRAWABLES.get(app.id));icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,48),1);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,Math.min(Ui.ICON_DP,48)),1);
         dock.addView(icon,p);
         icon.setOnClickListener(v->{Ui.press(icon,storage.animations());launch(app.id);});
         icon.setOnLongClickListener(v->{
@@ -469,47 +578,122 @@ public class MainActivity extends Activity {
     }
 
     private final BroadcastReceiver packageReceiver=new BroadcastReceiver() {
-        @Override public void onReceive(Context context,Intent intent) {loadApps();}
+        @Override public void onReceive(Context context,Intent intent) {
+            packageRefreshHandler.removeCallbacks(packageRefresh);
+            packageRefreshHandler.postDelayed(packageRefresh,500);
+        }
     };
 
     private void settings() {
-        String[] choices={"4 columns","5 columns","Show / hide clock","Show / hide dock","Restore hidden apps","Animations on / off","Refresh applications","Android Home settings"};
-        new AlertDialog.Builder(this).setTitle("VIVO LITE SETTINGS").setItems(choices,(d,n)->{
-            if(n==0||n==1){columns=n==0?4:5;storage.setColumns(columns);render(search.getText().toString());}
-            else if(n==2){storage.setShowClock(!storage.showClock());clock.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);date.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);}
-            else if(n==3){storage.setShowDock(!storage.showDock());rebuild();}
-            else if(n==4){hidden.clear();storage.setHidden(hidden);render(search.getText().toString());}
-            else if(n==5){storage.setAnimations(!storage.animations());Toast.makeText(this,"Animations "+(storage.animations()?"enabled":"disabled"),Toast.LENGTH_SHORT).show();}
-            else if(n==6)loadApps();
-            else if(n==7){try{startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}
+        String[] choices={"Grid columns · "+columns,"Show / hide clock","Show / hide dock","Wallpaper · "+wallpaperName(storage.getWallpaper()),
+                "Accent colour · "+accentName(storage.getAccent()),"Glass appearance · "+(storage.darkGlass()?"Dark":"Light"),
+                "Icon size · "+storage.getIconSize()+" dp","Restore hidden apps","Animations on / off","Refresh applications","Android Home settings"};
+        new AlertDialog.Builder(this).setTitle("YOUR HOME STYLE").setItems(choices,(d,n)->{
+            if(n==0){columns=columns==4?5:4;storage.setColumns(columns);rebuildHomeUi();}
+            else if(n==1){storage.setShowClock(!storage.showClock());clock.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);date.setVisibility(storage.showClock()?View.VISIBLE:View.GONE);}
+            else if(n==2){storage.setShowDock(!storage.showDock());rebuildHomeUi();}
+            else if(n==3)chooseWallpaper();
+            else if(n==4)chooseAccent();
+            else if(n==5){storage.setDarkGlass(!storage.darkGlass());applyAppearance();rebuildHomeUi();}
+            else if(n==6)chooseIconSize();
+            else if(n==7){hidden.clear();storage.setHidden(hidden);render(search.getText().toString());}
+            else if(n==8){storage.setAnimations(!storage.animations());Toast.makeText(this,"Animations "+(storage.animations()?"enabled":"disabled"),Toast.LENGTH_SHORT).show();}
+            else if(n==9)loadApps();
+            else if(n==10){try{startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}
         }).show();
     }
 
-    private void rebuild() {
-        buildHome();loadApps();
+    private void chooseWallpaper() {
+        String[] names={"Dynamic dark gradient","Deep ocean","Violet dusk"};
+        new AlertDialog.Builder(this).setTitle("WALLPAPER").setSingleChoiceItems(names,storage.getWallpaper(),(dialog,which)->{
+            storage.setWallpaper(which);applyAppearance();
+            dialog.dismiss();
+        }).setNegativeButton("CANCEL",null).show();
+    }
+
+    private void chooseAccent() {
+        String[] names={"Glacier blue","Violet","Mint","Rose"};
+        int[] colors={0xFF89AEFF,0xFFB49AFF,0xFF83D7C2,0xFFFFA6B7};
+        int selected=0;
+        for(int i=0;i<colors.length;i++)if(colors[i]==storage.getAccent())selected=i;
+        new AlertDialog.Builder(this).setTitle("ACCENT COLOUR").setSingleChoiceItems(names,selected,(dialog,which)->{
+            storage.setAccent(colors[which]);applyAppearance();rebuildHomeUi();dialog.dismiss();
+        }).setNegativeButton("CANCEL",null).show();
+    }
+
+    private void chooseIconSize() {
+        String[] names={"40 dp","46 dp","52 dp"};
+        int[] sizes={40,46,52};
+        int selected=1;
+        for(int i=0;i<sizes.length;i++)if(sizes[i]==storage.getIconSize())selected=i;
+        new AlertDialog.Builder(this).setTitle("APP ICON SIZE").setSingleChoiceItems(names,selected,(dialog,which)->{
+            storage.setIconSize(sizes[which]);applyAppearance();rebuildHomeUi();dialog.dismiss();
+        }).setNegativeButton("CANCEL",null).show();
+    }
+
+    private String wallpaperName(int index) {
+        String[] names={"Dynamic dark gradient","Deep ocean","Violet dusk"};
+        return names[Math.max(0,Math.min(index,names.length-1))];
+    }
+
+    private String accentName(int color) {
+        if(color==0xFFB49AFF)return "Violet";
+        if(color==0xFF83D7C2)return "Mint";
+        if(color==0xFFFFA6B7)return "Rose";
+        return "Glacier blue";
+    }
+
+    private void rebuildHomeUi() {
+        String query=search==null?"":search.getText().toString();
+        applyAppearance();
+        buildHome();
+        search.setText(query);
+        if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
+        render(query,false,true);
     }
 
     @Override protected void onResume() {
         super.onResume();
-        if(grid!=null)loadApps();
+        activityResumed=true;
+        if(iconsTrimmed||packagesDirty) {
+            iconsTrimmed=false;
+            packagesDirty=false;
+            loadApps();
+        }
     }
 
     @Override protected void onPause() {
+        activityResumed=false;
         super.onPause();
         try {((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0);}catch(Exception ignored){}
     }
 
     @Override public void onBackPressed() {
         if(search!=null&&search.length()>0){search.setText("");return;}
-        super.onBackPressed();
     }
 
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if(level>=TRIM_MEMORY_MODERATE&&iconCache!=null)iconCache.trim();
+        if(level>=TRIM_MEMORY_UI_HIDDEN&&iconCache!=null) {
+            DRAWABLES.clear();
+            clearImageDrawables(root);
+            iconCache.trim();
+            iconsTrimmed=true;
+            if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
+        }
+    }
+
+    private void clearImageDrawables(View view) {
+        if(view instanceof ImageView) ((ImageView)view).setImageDrawable(null);
+        if(view instanceof ViewGroup) {
+            ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)clearImageDrawables(group.getChildAt(i));
+        }
     }
 
     @Override protected void onDestroy() {
+        packageRefreshHandler.removeCallbacks(packageRefresh);
+        if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         if(receiverRegistered)try{unregisterReceiver(packageReceiver);}catch(Exception ignored){}
         super.onDestroy();
     }

@@ -42,6 +42,14 @@ public class LauncherStorage {
     public void setShowDock(boolean value) { prefs.edit().putBoolean("dock", value).apply(); }
     public boolean animations() { return prefs.getBoolean("animations", true); }
     public void setAnimations(boolean value) { prefs.edit().putBoolean("animations", value).apply(); }
+    public boolean darkGlass() { return prefs.getBoolean("dark_glass", false); }
+    public void setDarkGlass(boolean value) { prefs.edit().putBoolean("dark_glass", value).apply(); }
+    public int getAccent() { return prefs.getInt("accent", 0xFF89AEFF); }
+    public void setAccent(int value) { prefs.edit().putInt("accent", value).apply(); }
+    public int getWallpaper() { return prefs.getInt("wallpaper", 0); }
+    public void setWallpaper(int value) { prefs.edit().putInt("wallpaper", value).apply(); }
+    public int getIconSize() { return prefs.getInt("icon_size", 46); }
+    public void setIconSize(int value) { prefs.edit().putInt("icon_size", value).apply(); }
 
     public JSONObject getLayout() {
         try { return new JSONObject(prefs.getString("layout", "{}")); }

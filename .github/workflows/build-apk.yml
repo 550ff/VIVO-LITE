@@ -3,7 +3,7 @@ name: Build VIVO LITE APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "v1.1" ]
 
 permissions:
   contents: read
@@ -29,12 +29,18 @@ jobs:
         with:
           gradle-version: '8.13'
           cache-provider: basic
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
+      - name: Install Android SDK Platform 36 and Build Tools 35.0.0
+        run: sdkmanager --install "platforms;android-36" "build-tools;35.0.0"
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: gradle --no-daemon --console=plain --stacktrace --warning-mode all assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: VIVO-LITE-V0.2-debug
+          name: VIVO-LITE-V1.1-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

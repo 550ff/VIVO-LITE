@@ -21,7 +21,7 @@ public class ControlCenterDialog extends Dialog {
         panel.setPadding(Ui.dp(context,20),Ui.dp(context,18),Ui.dp(context,20),Ui.dp(context,20));
         panel.setBackground(Ui.panel(context,Ui.GLASS,28));
 
-        TextView heading = text(context,"CONTROL CENTRE",13,Ui.MUTED);
+        TextView heading = text(context,"CONTROL CENTRE",13,Ui.secondaryText());
         heading.setLetterSpacing(0.12f);
         panel.addView(heading,new LinearLayout.LayoutParams(-1,Ui.dp(context,32)));
 
@@ -32,11 +32,14 @@ public class ControlCenterDialog extends Dialog {
         addTile(context,row,"Sound",()->open(Settings.ACTION_SOUND_SETTINGS));
         panel.addView(row,new LinearLayout.LayoutParams(-1,Ui.dp(context,76)));
 
-        TextView brightness = text(context,"BRIGHTNESS",11,Ui.MUTED);
+        TextView brightness = text(context,"BRIGHTNESS",11,Ui.secondaryText());
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1,Ui.dp(context,30));
         bp.topMargin=Ui.dp(context,14); panel.addView(brightness,bp);
         SeekBar bar = new SeekBar(context);
         bar.setMax(255);
+        android.content.res.ColorStateList accent=android.content.res.ColorStateList.valueOf(Ui.ACCENT);
+        bar.setProgressTintList(accent);
+        bar.setThumbTintList(accent);
         try {
             int current = Settings.System.getInt(context.getContentResolver(),Settings.System.SCREEN_BRIGHTNESS,130);
             bar.setProgress(current);
@@ -58,7 +61,7 @@ public class ControlCenterDialog extends Dialog {
         });
         panel.addView(bar,new LinearLayout.LayoutParams(-1,Ui.dp(context,42)));
 
-        TextView settings = text(context,"OPEN ANDROID SETTINGS  ↗",12,Ui.WHITE);
+        TextView settings = text(context,"OPEN ANDROID SETTINGS  ↗",12,Ui.primaryText());
         settings.setGravity(Gravity.CENTER);
         settings.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,18));
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,Ui.dp(context,46));
@@ -71,7 +74,7 @@ public class ControlCenterDialog extends Dialog {
     }
 
     private void addTile(Context c,LinearLayout row,String label,Runnable action) {
-        TextView tile=text(c,label,12,Ui.WHITE);
+        TextView tile=text(c,label,12,Ui.primaryText());
         tile.setGravity(Gravity.CENTER);
         tile.setBackground(Ui.panel(c,Ui.GLASS_LIGHT,18));
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(c,64),1);

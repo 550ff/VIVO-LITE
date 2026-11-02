@@ -1,13 +1,25 @@
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:colorAccent">#E5E5E5</item>
-        <item name="android:statusBarColor">#080808</item>
-        <item name="android:navigationBarColor">#080808</item>
+        <item name="android:colorAccent">#89AEFF</item>
+        <item name="android:statusBarColor">#0D131E</item>
+        <item name="android:navigationBarColor">#0D131E</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowBackground">@drawable/wallpaper_dark</item>
         <item name="android:windowActivityTransitions">false</item>
     </style>
+    <style name="VivoDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/glass_dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/glass_dialog_exit</item>
+    </style>
+    <style name="AccentGlacier"><item name="android:colorAccent">#89AEFF</item></style>
+    <style name="AccentViolet"><item name="android:colorAccent">#B49AFF</item></style>
+    <style name="AccentMint"><item name="android:colorAccent">#83D7C2</item></style>
+    <style name="AccentRose"><item name="android:colorAccent">#FFA6B7</item></style>
+    <style name="VivoAlertLight" parent="@android:style/Theme.Material.Light.Dialog.Alert" />
+    <style name="VivoAlertDark" parent="@android:style/Theme.Material.Dialog.Alert" />
+    <style name="UseLightAlerts"><item name="android:alertDialogTheme">@style/VivoAlertLight</item></style>
+    <style name="UseDarkAlerts"><item name="android:alertDialogTheme">@style/VivoAlertDark</item></style>
 </resources>

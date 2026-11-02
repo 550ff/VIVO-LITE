@@ -30,10 +30,10 @@ public class FolderDialog extends Dialog {
         EditText title = new EditText(context);
         title.setSingleLine(true);
         title.setText(folder.title);
-        title.setTextColor(Ui.WHITE);
+        title.setTextColor(Ui.primaryText());
         title.setTextSize(19);
         title.setBackgroundColor(Color.TRANSPARENT);
-        title.setHintTextColor(Ui.MUTED);
+        title.setHintTextColor(Ui.secondaryText());
         title.setHint("Folder name");
         box.addView(title, new LinearLayout.LayoutParams(-1,Ui.dp(context,48)));
 
@@ -47,9 +47,10 @@ public class FolderDialog extends Dialog {
             cell.setOrientation(LinearLayout.VERTICAL);
             ImageView icon = new ImageView(context);
             icon.setImageDrawable(cache.get(found.id, foundDrawable(context, found, apps)));
-            cell.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,42),Ui.dp(context,42)));
+            int iconSize=Math.min(Ui.ICON_DP,42);
+            cell.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,iconSize),Ui.dp(context,iconSize)));
             TextView label = new TextView(context);
-            label.setText(found.title); label.setTextColor(Ui.WHITE); label.setTextSize(10);
+            label.setText(found.title); label.setTextColor(Ui.primaryText()); label.setTextSize(10);
             label.setGravity(Gravity.CENTER); label.setSingleLine(true);
             cell.addView(label,new LinearLayout.LayoutParams(Ui.dp(context,78),Ui.dp(context,24)));
             cell.setOnClickListener(v -> listener.onLaunch(found.id));
@@ -65,12 +66,12 @@ public class FolderDialog extends Dialog {
 
         TextView note = new TextView(context);
         note.setText("Tap an app to open · Long-press to remove");
-        note.setTextColor(Ui.MUTED); note.setTextSize(11);
+        note.setTextColor(Ui.secondaryText()); note.setTextSize(11);
         note.setPadding(0,Ui.dp(context,8),0,Ui.dp(context,10));
         box.addView(note);
 
         TextView done = new TextView(context);
-        done.setText("DONE"); done.setTextColor(Ui.WHITE); done.setGravity(Gravity.CENTER);
+        done.setText("DONE"); done.setTextColor(Ui.primaryText()); done.setGravity(Gravity.CENTER);
         done.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,18));
         box.addView(done,new LinearLayout.LayoutParams(-1,Ui.dp(context,44)));
         done.setOnClickListener(v -> {

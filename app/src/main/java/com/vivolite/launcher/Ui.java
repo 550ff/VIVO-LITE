@@ -1,21 +1,24 @@
 package com.vivolite.launcher;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 
 public final class Ui {
-    public static final int WHITE = Color.rgb(245,245,247);
-    public static final int MUTED = Color.rgb(157,159,166);
-    public static final int GLASS = Color.argb(218, 25,26,30);
-    public static final int GLASS_LIGHT = Color.argb(232, 38,39,44);
-    public static final int BORDER = Color.argb(48,255,255,255);
+    public static final int WHITE = Color.rgb(247,249,253);
+    public static final int MUTED = Color.rgb(183,194,210);
+    public static final int INK = Color.rgb(37,48,66);
+    public static final int MUTED_INK = Color.rgb(101,115,134);
+    public static final int ACCENT_BLUE = Color.rgb(137,174,255);
+    public static int ACCENT = ACCENT_BLUE;
+    public static int GLASS = Color.argb(202, 238,246,255);
+    public static int GLASS_LIGHT = Color.argb(230, 249,252,255);
+    public static final int BORDER = Color.argb(118,255,255,255);
     public static final int BLACK = Color.rgb(8,8,10);
+    public static int ICON_DP = 46;
+    private static boolean darkGlass;
 
     private Ui() {}
 
@@ -23,19 +26,31 @@ public final class Ui {
         return (int)(value*c.getResources().getDisplayMetrics().density+0.5f);
     }
 
-    public static GradientDrawable panel(Context c, int color, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(dp(c,radius));
-        d.setStroke(dp(c,1), BORDER);
-        return d;
+    public static void configure(boolean useDarkGlass, int accent, int iconSizeDp) {
+        darkGlass = useDarkGlass;
+        ACCENT = accent;
+        ICON_DP = iconSizeDp;
+        if (darkGlass) {
+            GLASS = Color.argb(220, 24,34,49);
+            GLASS_LIGHT = Color.argb(232, 35,47,65);
+        } else {
+            GLASS = Color.argb(202, 238,246,255);
+            GLASS_LIGHT = Color.argb(230, 249,252,255);
+        }
+    }
+
+    public static int primaryText() { return darkGlass ? WHITE : INK; }
+    public static int secondaryText() { return darkGlass ? MUTED : MUTED_INK; }
+
+    public static Drawable panel(Context c, int color, int radius) {
+        return new GlassDrawable(color, dp(c,radius), darkGlass);
     }
 
     public static void enter(View view, boolean enabled, int distance) {
         if (!enabled) return;
         view.setAlpha(0f);
         view.setTranslationY(dp(view.getContext(), distance));
-        view.animate().alpha(1f).translationY(0f).setDuration(170)
+        view.animate().alpha(1f).translationY(0f).setDuration(145)
             .setInterpolator(new DecelerateInterpolator()).start();
     }
 
