@@ -1036,7 +1036,6 @@ public class MainActivity extends Activity {
     public boolean isSurfaceActive(int surface) { return activeSurface==surface; }
 
     private void releaseActiveSurface() {
-        if(activeLibraryScreen!=null){activeLibraryScreen.onHidden();activeLibraryScreen=null;}
         if(activeNotificationScreen!=null){activeNotificationScreen.onHidden();activeNotificationScreen=null;}
     }
 
