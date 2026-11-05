@@ -19,9 +19,11 @@ public class ControlCenterScreen extends LinearLayout {
     private final TextView flashlight;
     private final TextView brightnessValue;
     private final TextView volumeValue;
+    private final boolean animations;
 
     public ControlCenterScreen(Context context, boolean animations) {
         super(context);
+        this.animations=animations;
         setOrientation(VERTICAL);
         setPadding(Ui.dp(context,20),Ui.dp(context,20),Ui.dp(context,20),Ui.dp(context,12));
         setBackground(new LauncherWallpaperDrawable(Ui.ACCENT,0));
