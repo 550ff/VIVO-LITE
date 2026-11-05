@@ -36,7 +36,7 @@ final class SurfaceNavigation extends LinearLayout {
         item.setGravity(Gravity.CENTER);
         item.setFocusable(true);
         item.setClickable(true);
-        item.setContentDescription(LABELS[destination]);
+        item.setContentDescription(LABELS[visualIndex]);
         boolean active = destination == selected;
 
         TextView glyph = new TextView(context);
@@ -48,7 +48,7 @@ final class SurfaceNavigation extends LinearLayout {
         item.addView(glyph, new LayoutParams(-1, Ui.dp(context, 24)));
 
         TextView label = new TextView(context);
-        label.setText(LABELS[destination]);
+        label.setText(LABELS[visualIndex]);
         label.setTextSize(7);
         label.setLetterSpacing(0.075f);
         label.setTextColor(active ? Ui.primaryText() : Ui.secondaryText());
