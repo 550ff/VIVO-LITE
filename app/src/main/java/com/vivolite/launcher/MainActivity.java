@@ -82,11 +82,14 @@ public class MainActivity extends Activity {
     private final ArrayList<Boolean> homePageBuildQueued = new ArrayList<>();
     private final ArrayList<Boolean> homePageBuildAnimate = new ArrayList<>();
     private final ArrayList<Integer> homePageBuildQueue = new ArrayList<>();
-    private static final int HOME_CELLS_PER_FRAME = 3;
+    // Page-cell inflation runs only when the current frame has spare time.
+    // A fixed cell count can overrun a frame on slow CPUs or for folder previews.
+    private static final long HOME_BUILD_BUDGET_NANOS = 2_000_000L;
+    private static final int HOME_BUILD_MAX_CELLS_PER_FRAME = 2;
     private boolean homeBuildFramePosted = false;
     private final Choreographer.FrameCallback homeBuildFrame = frameTimeNanos -> {
         homeBuildFramePosted = false;
-        runHomePageBuildFrame();
+        runHomePageBuildFrame(frameTimeNanos);
     };
     private String homeEmptyMessage = "NO APPS AVAILABLE";
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
@@ -632,12 +635,16 @@ public class MainActivity extends Activity {
         scheduleHomePageBuildFrame();
     }
 
-    private void runHomePageBuildFrame() {
+    private void runHomePageBuildFrame(long frameTimeNanos) {
         if(!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing()
                 ||homePager==null||homePagerDragging||homePagerScrolling)return;
 
-        int budget=HOME_CELLS_PER_FRAME;
-        while(budget>0&&!homePageBuildQueue.isEmpty()) {
+        // Choreographer's frame timestamp and System.nanoTime() share a time base.
+        // Leave most of the 16.7 ms 60 Hz frame for traversal, drawing and input.
+        final long buildDeadlineNanos=frameTimeNanos+HOME_BUILD_BUDGET_NANOS;
+        int builtCells=0;
+        while(builtCells<HOME_BUILD_MAX_CELLS_PER_FRAME
+                &&System.nanoTime()<buildDeadlineNanos&&!homePageBuildQueue.isEmpty()) {
             int page=homePageBuildQueue.get(0);
             if(page<0||page>=homeGrids.size()) {
                 homePageBuildQueue.remove(0);
@@ -661,8 +668,8 @@ public class MainActivity extends Activity {
             }
 
             int index=homePageBuildIndex.get(page);
-            int limit=Math.min(items.size(),index+budget);
-            while(index<limit) {
+            while(index<items.size()&&builtCells<HOME_BUILD_MAX_CELLS_PER_FRAME
+                    &&System.nanoTime()<buildDeadlineNanos) {
                 LauncherItem item=items.get(index);
                 boolean animate=homePageBuildAnimate.get(page)&&index<columns;
                 LinearLayout cellView=makeCell(item,animate);
@@ -671,7 +678,7 @@ public class MainActivity extends Activity {
                 params.height=Ui.dp(this,104);
                 pageGrid.addView(cellView,params);
                 index++;
-                budget--;
+                builtCells++;
             }
             homePageBuildIndex.set(page,index);
             if(index>=items.size())finishHomePageBuild(page);
