@@ -221,7 +221,7 @@ public class MainActivity extends Activity {
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("APP COLLECTION",10,Ui.secondaryText(),true);
+        TextView title=text("YOUR APPS",10,Ui.secondaryText(),true);
         title.setLetterSpacing(0.14f);
         heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
         count=text("0 ITEMS",9,Ui.MUTED,false); count.setLetterSpacing(0.06f); heading.addView(count);
@@ -431,7 +431,6 @@ public class MainActivity extends Activity {
                 }
             } else if(!hidden.contains(item.id)&&item.title.toLowerCase(Locale.ROOT).contains(q))visible.add(item);
         }
-        count.setText(visible.size()+" ITEMS");
         if(!q.isEmpty())currentHomePage=0;
         renderHomePages(visible,animate,q);
         if(refreshDock)renderDock();
@@ -463,6 +462,7 @@ public class MainActivity extends Activity {
             dot.setOnClickListener(v->showHomePage(targetPage,true));
         }
         currentHomePage=Math.min(currentHomePage,pageCount-1);
+        if(count!=null)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
         homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
         updatePageIndicator();
@@ -552,6 +552,7 @@ public class MainActivity extends Activity {
             dot.setText(i==currentHomePage?"━":"•");
             dot.setTextSize(i==currentHomePage?13:10);
         }
+        if(count!=null&&pageDots.getChildCount()>0)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageDots.getChildCount()));
     }
 
     private LinearLayout makeCell(LauncherItem item,boolean animate) {
