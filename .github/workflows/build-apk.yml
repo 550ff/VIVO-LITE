@@ -39,10 +39,21 @@ jobs:
         run: sdkmanager --install "platforms;android-36" "build-tools;35.0.0"
       - name: Build debug APK
         run: gradle --no-daemon --console=plain --stacktrace --warning-mode all assembleDebug
-      - name: Upload APK
+      - name: Validate APK metadata and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.vivolite.launcher' versionCode='13' versionName='1.4.1'"
+          sha256sum "$APK" > "$APK.sha256"
+      - name: Upload final APK
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: VIVO-LITE-V1.4-premium-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: VIVO-LITE-V1.4.1-final-debug
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

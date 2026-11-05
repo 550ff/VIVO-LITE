@@ -1169,7 +1169,10 @@ public class MainActivity extends Activity {
 
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if(level>=TRIM_MEMORY_UI_HIDDEN&&iconCache!=null) {
+        // TRIM_MEMORY_UI_HIDDEN is sent on ordinary app launches. Keep the home icons
+        // warm for fast return; release them when Android actually demotes this process
+        // into the background under memory pressure.
+        if(level>=TRIM_MEMORY_BACKGROUND&&iconCache!=null) {
             appLoadGeneration++;
             if(appLoadTask!=null)appLoadTask.cancel(true);
             DRAWABLES.clear();
