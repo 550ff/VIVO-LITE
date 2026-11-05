@@ -43,6 +43,7 @@ public final class SettingsScreen extends LinearLayout {
         navigationParams.topMargin=Ui.dp(context,10);
         panel.addView(new SurfaceNavigation(context,SurfaceNavigation.SETTINGS),navigationParams);
         back.setOnClickListener(v->{if(activeCategory>=0)showCategories();else ((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME);});
+        Ui.attachTouchFeedback(back,animations);
         showCategories();
     }
 
@@ -93,6 +94,7 @@ public final class SettingsScreen extends LinearLayout {
         if(detail==null||detail.isEmpty())description.setVisibility(android.view.View.GONE);
         LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2);dp.topMargin=Ui.dp(context,3);card.addView(description,dp);
         card.setOnClickListener(v->action.run());
+        Ui.attachTouchFeedback(card,true);
     }
 
     private TextView text(String value,int size,int color,boolean bold) {
