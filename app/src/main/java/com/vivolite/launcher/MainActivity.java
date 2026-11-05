@@ -487,7 +487,7 @@ public class MainActivity extends Activity {
 
     private void renderHomePages(List<LauncherItem> visible,boolean animate,String query) {
         pageTrack.removeAllViews();pageDots.removeAllViews();homeGrids.clear();grid=null;
-        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int width=homePageWidth();
         int pageCapacity=Math.max(columns,columns*4);
         int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
         // Clamp before creating the dots so the selected page is styled correctly
@@ -518,6 +518,10 @@ public class MainActivity extends Activity {
         if(query.isEmpty())storage.setHomePage(currentHomePage);
         homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
         updatePageIndicator();
+    }
+
+    private int homePageWidth() {
+        return Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
     }
 
     private void showHomePage(int page,boolean smooth) {
@@ -589,7 +593,7 @@ public class MainActivity extends Activity {
 
     private void snapHomePage() {
         if(homePager==null||homeGrids.isEmpty())return;
-        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int width=homePageWidth();
         int page=Math.round((float)homePager.getScrollX()/width);
         showHomePage(page,true);
     }
