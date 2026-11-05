@@ -19,13 +19,14 @@ public final class SettingsScreen extends LinearLayout {
     private final String[] categories;
     private final String[] subtitles;
     private final Listener listener;
+    private final boolean animations;
     private final LinearLayout panel, rows;
     private final TextView title, back;
     private int activeCategory=-1;
 
     public SettingsScreen(Context context,String[] categories,String[] subtitles,boolean animations,Listener listener) {
         super(context);
-        this.context=context;this.categories=categories;this.subtitles=subtitles;this.listener=listener;
+        this.context=context;this.categories=categories;this.subtitles=subtitles;this.listener=listener;this.animations=animations;
         panel=this;panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(Ui.dp(context,18),Ui.dp(context,16),Ui.dp(context,18),Ui.dp(context,14));
         panel.setBackground(Ui.panel(context,Ui.GLASS,24));
@@ -94,7 +95,7 @@ public final class SettingsScreen extends LinearLayout {
         if(detail==null||detail.isEmpty())description.setVisibility(android.view.View.GONE);
         LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2);dp.topMargin=Ui.dp(context,3);card.addView(description,dp);
         card.setOnClickListener(v->action.run());
-        Ui.attachTouchFeedback(card,true);
+        Ui.attachTouchFeedback(card,animations);
     }
 
     private TextView text(String value,int size,int color,boolean bold) {
