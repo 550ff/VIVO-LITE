@@ -46,12 +46,12 @@ jobs:
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          "$AAPT" dump badging "$APK" | grep -F "package: name='com.vivolite.launcher' versionCode='16' versionName='1.4.4'"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.vivolite.launcher' versionCode='17' versionName='1.4.5'"
           sha256sum "$APK" > "$APK.sha256"
       - name: Upload final APK
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: VIVO-LITE-V1.4.4-final-debug
+          name: VIVO-LITE-V1.4.5-final-debug
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256

@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
     private final ArrayList<GridLayout> homeGrids = new ArrayList<>();
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
     private Runnable pageSnap;
+    private boolean homePagerDragging = false;
     private int currentHomePage = 0;
     private static final int WIDGET_HOST_ID=0x564C;
     private static final int REQUEST_WIDGET_PICK=4100;
@@ -259,16 +260,20 @@ public class MainActivity extends Activity {
         pageTrack.setOrientation(LinearLayout.HORIZONTAL);
         homePager.addView(pageTrack,new HorizontalScrollView.LayoutParams(-2,-1));
         homePager.setOnTouchListener((view,event)->{
-            if(event.getAction()==MotionEvent.ACTION_UP){
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN) {
+                homePagerDragging=true;
                 if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
-                pageSnap=()->snapHomePage();pageSnapHandler.postDelayed(pageSnap,90);
+            } else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL) {
+                homePagerDragging=false;
+                schedulePageSnap();
             }
             return false;
         });
         root.addView(homePager,new LinearLayout.LayoutParams(-1,0,1));
         pageDots=new LinearLayout(this);pageDots.setGravity(Gravity.CENTER);
         root.addView(pageDots,new LinearLayout.LayoutParams(-1,Ui.dp(this,20)));
-        homePager.getViewTreeObserver().addOnScrollChangedListener(this::updatePageIndicator);
+        homePager.getViewTreeObserver().addOnScrollChangedListener(this::onHomePagerScrolled);
 
         if(storage.showDock()) {
             dock=new LinearLayout(this);
@@ -581,11 +586,27 @@ public class MainActivity extends Activity {
         }
     };
 
-    private void snapHomePage() {
+    private void onHomePagerScrolled() {
+        updatePageIndicator();
+        // A fling keeps producing scroll callbacks after ACTION_UP. Debounce from
+        // the final scroll frame instead of snapping 90ms after the finger lifts.
+        if(!homePagerDragging)schedulePageSnap();
+    }
+
+    private void schedulePageSnap() {
         if(homePager==null||homeGrids.isEmpty())return;
+        if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+        pageSnap=()->snapHomePage();
+        pageSnapHandler.postDelayed(pageSnap,140);
+    }
+
+    private void snapHomePage() {
+        if(homePager==null||homeGrids.isEmpty()||homePagerDragging)return;
         int width=homePageWidth();
-        int page=Math.round((float)homePager.getScrollX()/width);
-        showHomePage(page,true);
+        int target=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),homeGrids.size()-1))*width;
+        if(Math.abs(homePager.getScrollX()-target)>Ui.dp(this,2)) {
+            showHomePage(target/width,true);
+        }
     }
 
     private void updatePageIndicator() {
