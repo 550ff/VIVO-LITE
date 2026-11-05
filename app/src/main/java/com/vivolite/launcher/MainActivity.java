@@ -152,10 +152,10 @@ public class MainActivity extends Activity {
         LinearLayout brandBlock=new LinearLayout(this);
         brandBlock.setOrientation(LinearLayout.VERTICAL);
         brandBlock.setGravity(Gravity.CENTER_VERTICAL);
-        TextView brand = text("VIVO LITE",12,Ui.WHITE,true);
-        brand.setLetterSpacing(0.15f);
+        TextView brand = text("VIVO LITE",13,Ui.WHITE,true);
+        brand.setLetterSpacing(0.18f);
         brandBlock.addView(brand);
-        TextView strap=text("A CALMER HOME",8,Ui.MUTED,false);
+        TextView strap=text("YOUR SPACE, REFINED",8,Ui.secondaryText(),false);
         strap.setLetterSpacing(0.12f);
         brandBlock.addView(strap);
         top.addView(brandBlock,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
@@ -175,8 +175,9 @@ public class MainActivity extends Activity {
         clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
         clock.setGravity(Gravity.CENTER);
-        clock.setTextSize(58); clock.setTextColor(Ui.WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        clock.setTextSize(60); clock.setTextColor(Ui.WHITE);
+        clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
+        clock.setLetterSpacing(0.015f);
         final float[] clockTouchY={0f};
         clock.setOnTouchListener((view,event)->{
             if(event.getAction()==MotionEvent.ACTION_DOWN){clockTouchY[0]=event.getY();return true;}
@@ -196,7 +197,8 @@ public class MainActivity extends Activity {
         date = new TextClock(this);
         date.setGravity(Gravity.CENTER);
         date.setFormat24Hour("EEEE  ·  d MMMM"); date.setFormat12Hour("EEEE  ·  d MMMM");
-        date.setTextSize(13); date.setTextColor(Ui.MUTED);
+        date.setTextSize(12); date.setTextColor(Ui.secondaryText());
+        date.setLetterSpacing(0.035f);
         date.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
         LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
         dp.bottomMargin=Ui.dp(this,16); root.addView(date,dp);
@@ -215,7 +217,7 @@ public class MainActivity extends Activity {
         root.addView(widgetShelf,new LinearLayout.LayoutParams(-1,-2));
 
         search = new EditText(this);
-        search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.primaryText());
+        search.setSingleLine(true); search.setTextSize(13); search.setTextColor(Ui.primaryText());
         search.setHintTextColor(Ui.secondaryText()); search.setHint("⌕   Search your apps");
         search.setPadding(Ui.dp(this,16),0,Ui.dp(this,16),0);
         search.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,22));
@@ -224,7 +226,7 @@ public class MainActivity extends Activity {
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("YOUR APPS",10,Ui.MUTED,true);
+        TextView title=text("APP COLLECTION",10,Ui.secondaryText(),true);
         title.setLetterSpacing(0.14f);
         heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
         count=text("0 ITEMS",9,Ui.MUTED,false); count.setLetterSpacing(0.06f); heading.addView(count);
