@@ -23,7 +23,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.provider.AlarmClock;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -93,7 +92,6 @@ public class MainActivity extends Activity {
     private View activeSurfaceView;
     private NotificationScreen activeNotificationScreen;
     private int activeSurface = SurfaceNavigation.HOME;
-    private View smartEdgeOverlay;
     private TextView pulseCapsule;
     private boolean batteryReceiverRegistered=false;
     private LegacyTorchController torchController;
@@ -149,7 +147,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildHome() {
-        closeSmartEdge();
+
         if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
         currentHomePage=storage.getHomePage();
         dock = null;
@@ -220,7 +218,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams pulseParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,32));
         pulseParams.bottomMargin=Ui.dp(this,8);root.addView(pulseCapsule,pulseParams);
         pulseCapsule.setOnClickListener(v->showControlCenter());
-        pulseCapsule.setOnLongClickListener(v->{showSmartEdge();return true;});
         Ui.attachTouchFeedback(pulseCapsule,storage.animations());
 
         widgetShelf=new LinearLayout(this);widgetShelf.setOrientation(LinearLayout.VERTICAL);
@@ -276,11 +273,6 @@ public class MainActivity extends Activity {
         homeFrame=new FrameLayout(this);
         homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
         homeFrame.addView(root,new FrameLayout.LayoutParams(-1,-1));
-        View edgeHandle=new View(this);edgeHandle.setContentDescription("Open Smart Edge quick tools");
-        edgeHandle.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,10));edgeHandle.setAlpha(0.68f);
-        FrameLayout.LayoutParams edgeParams=new FrameLayout.LayoutParams(Ui.dp(this,20),Ui.dp(this,88),Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        homeFrame.addView(edgeHandle,edgeParams);edgeHandle.setOnClickListener(v->showSmartEdge());
-        Ui.attachTouchFeedback(edgeHandle,storage.animations());
         setContentView(homeFrame);
 
         search.addTextChangedListener(new TextWatcher() {
@@ -530,41 +522,6 @@ public class MainActivity extends Activity {
         if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
         if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
         updatePageIndicator();
-    }
-
-    private void showSmartEdge() {
-        if(smartEdgeOverlay!=null||homeFrame==null)return;
-        FrameLayout overlay=new FrameLayout(this);
-        View scrim=new View(this);scrim.setBackgroundColor(0x88000000);overlay.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
-        scrim.setOnClickListener(v->closeSmartEdge());
-        ArrayList<LauncherItem> quickFavorites=new ArrayList<>();
-        for(LauncherItem app:apps)if(favorites.contains(app.id)&&!hidden.contains(app.id)&&quickFavorites.size()<12)quickFavorites.add(app);
-        SmartEdgePanel panel=new SmartEdgePanel(this,quickFavorites,this::runSmartEdgeAction,()->closeSmartEdge(),storage.animations());
-        FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(Ui.dp(this,280),-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        overlay.addView(panel,panelParams);
-        homeFrame.addView(overlay,new FrameLayout.LayoutParams(-1,-1));smartEdgeOverlay=overlay;
-        panel.setTranslationX(Ui.dp(this,280));
-        panel.animate().translationX(0).setDuration(storage.animations()?180:0).start();
-    }
-
-    private void closeSmartEdge() {
-        View overlay=smartEdgeOverlay;if(overlay==null)return;
-        smartEdgeOverlay=null;
-        if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);
-    }
-
-    private void runSmartEdgeAction(String action) {
-        closeSmartEdge();
-        try {
-            if(action.equals("timer")) {
-                Intent timer=new Intent(AlarmClock.ACTION_SET_TIMER);timer.putExtra(AlarmClock.EXTRA_LENGTH,300);timer.putExtra(AlarmClock.EXTRA_SKIP_UI,false);startActivity(timer);
-            } else if(action.equals("calculator")) {
-                Intent calculator=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALCULATOR);
-                if(calculator.resolveActivity(getPackageManager())!=null)startActivity(calculator);
-                else Toast.makeText(this,"No calculator app is installed",Toast.LENGTH_SHORT).show();
-            } else if(action.equals("note"))editQuickNote();
-            else if(action.startsWith("app:"))launch(action.substring(4));
-        } catch(Exception e) { Toast.makeText(this,"That tool is unavailable on this device",Toast.LENGTH_SHORT).show(); }
     }
 
     private void editQuickNote() {
@@ -881,8 +838,8 @@ public class MainActivity extends Activity {
     };
 
     private void settings() {
-        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system","Workspace & tools"};
-        String[] descriptions={"Wallpaper, monochrome surfaces, icon sizing and icon packs","Grid, clock, pages and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts","Native widgets and launcher-owned quick tools"};
+        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system","Workspace"};
+        String[] descriptions={"Wallpaper, monochrome surfaces, icon sizing and icon packs","Grid, clock, pages and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts","Native widgets and your saved quick note"};
         SettingsScreen screen=new SettingsScreen(this,sections,descriptions,storage.animations(),new SettingsScreen.Listener(){
             public String[] options(int category){return settingsOptions(category);}
             public String[] descriptions(int category){return settingsDescriptions(category);}
@@ -898,7 +855,7 @@ public class MainActivity extends Activity {
         if(section==2)return new String[]{"Animations · "+(storage.animations()?"On":"Off"),"Restore hidden apps","Refresh app library"};
         if(section==3)return new String[]{"Open notifications","Notification access settings"};
         if(section==4)return new String[]{"Android Home settings","Android display settings","Android sound settings"};
-        return new String[]{"Add a native Android widget","Open Smart Edge tools","Edit the saved quick note"};
+        return new String[]{"Add a native Android widget","Edit the saved quick note"};
     }
 
     private String[] settingsDescriptions(int section) {
@@ -907,7 +864,7 @@ public class MainActivity extends Activity {
         if(section==2)return new String[]{"Enable or disable launcher page and interaction animations.","Make hidden apps visible again.","Re-query installed launchable apps."};
         if(section==3)return new String[]{"View notifications only when Android Notification Access is enabled.","Open Android's notification access settings."};
         if(section==4)return new String[]{"Choose the Android Home app.","Open Android display settings.","Open Android sound settings."};
-        return new String[]{"Use Android's installed widget picker and persist the chosen widget.","Open launcher-owned timer, calculator, notes and favourite shortcuts.","Edit the note saved on this device."};
+        return new String[]{"Use Android's installed widget picker and persist the chosen widget.","Edit the note saved on this device."};
     }
 
     private void applySetting(int section,int index) {
@@ -933,7 +890,6 @@ public class MainActivity extends Activity {
             else openSystemSetting(Settings.ACTION_SOUND_SETTINGS,Settings.ACTION_SETTINGS);
         } else {
             if(index==0)pickWidget();
-            else if(index==1)showSmartEdge();
             else editQuickNote();
         }
     }
@@ -1086,7 +1042,7 @@ public class MainActivity extends Activity {
 
     public void navigateToSurface(int destination) {
         if(destination==activeSurface)return;
-        closeSmartEdge();
+
         releaseActiveSurface();
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
@@ -1175,7 +1131,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if(smartEdgeOverlay!=null){closeSmartEdge();return;}
+
         if(activeSurface==SurfaceNavigation.SETTINGS&&activeSurfaceView instanceof SettingsScreen&&((SettingsScreen)activeSurfaceView).handleBack())return;
         if(activeSurface!=SurfaceNavigation.HOME){navigateToSurface(SurfaceNavigation.HOME);return;}
         if(search!=null&&search.length()>0){
@@ -1195,7 +1151,7 @@ public class MainActivity extends Activity {
             clearImageDrawables(root);
             if(activeFolderDialog!=null)activeFolderDialog.dismiss();
             if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
-            closeSmartEdge();
+
             if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
             releaseActiveSurface();
             activeSurfaceView=null;
