@@ -102,6 +102,8 @@ public class MainActivity extends Activity {
     private boolean iconsTrimmed = false;
     private boolean activityResumed = false;
     private boolean packagesDirty = false;
+    private boolean appLoadPaused = false;
+    private boolean appLoadNeedsApply = false;
     private String draggingId;
     private String armedDragId;
     private final Handler packageRefreshHandler = new Handler(Looper.getMainLooper());
@@ -344,6 +346,8 @@ public class MainActivity extends Activity {
     }
 
     private void loadApps() {
+        appLoadPaused = false;
+        appLoadNeedsApply = true;
         final int generation = ++appLoadGeneration;
         final String selectedPack = storage.getIconPack();
         final Context appContext = getApplicationContext();
@@ -393,6 +397,7 @@ public class MainActivity extends Activity {
 
             appLoadHandler.post(() -> {
                 if (generation != appLoadGeneration || isFinishing()) return;
+                appLoadNeedsApply = false;
                 iconPackManager = loadedPack;
                 apps.clear();
                 apps.addAll(loadedApps);
@@ -1141,9 +1146,10 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed=true;
-        if(iconsTrimmed||packagesDirty) {
+        if(iconsTrimmed||packagesDirty||appLoadPaused) {
             iconsTrimmed=false;
             packagesDirty=false;
+            appLoadPaused=false;
             loadApps();
         }
         if(activeNotificationScreen!=null)activeNotificationScreen.onShown();
@@ -1151,6 +1157,14 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         activityResumed=false;
+        // Do not keep scanning installed apps or rasterizing icons while another app is foreground.
+        // Invalidate even a completed worker whose UI result is still queued on the main thread.
+        if(appLoadNeedsApply) {
+            appLoadGeneration++;
+            if(appLoadTask!=null)appLoadTask.cancel(true);
+            appLoadNeedsApply=false;
+            appLoadPaused=true;
+        }
         super.onPause();
         try {((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0);}catch(Exception ignored){}
     }
