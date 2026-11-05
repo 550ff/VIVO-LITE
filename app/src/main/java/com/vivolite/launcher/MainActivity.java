@@ -92,6 +92,8 @@ public class MainActivity extends Activity {
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
     private final Runnable pageSnap = this::snapHomePage;
     private boolean homePagerDragging = false;
+    // Keep page construction and hierarchy trimming off the active swipe/fling path.
+    private boolean homePagerScrolling = false;
     private int currentHomePage = 0;
     private int lastHomePagerScrollX = 0;
     private int homePageBuildDirection = 1;
@@ -281,9 +283,11 @@ public class MainActivity extends Activity {
             int action=event.getActionMasked();
             if(action==MotionEvent.ACTION_DOWN) {
                 homePagerDragging=true;
+                homePagerScrolling=true;
                 if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
             } else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL) {
                 homePagerDragging=false;
+                homePagerScrolling=true;
                 schedulePageSnap();
             }
             return false;
@@ -600,6 +604,7 @@ public class MainActivity extends Activity {
 
     private void scheduleHomePageBuildFrame() {
         if(homeBuildFramePosted||homePageBuildQueue.isEmpty()||homePager==null
+                ||homePagerDragging||homePagerScrolling
                 ||!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing())return;
         homeBuildFramePosted=true;
         Choreographer.getInstance().postFrameCallback(homeBuildFrame);
@@ -627,7 +632,7 @@ public class MainActivity extends Activity {
 
     private void runHomePageBuildFrame() {
         if(!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing()
-                ||homePager==null)return;
+                ||homePager==null||homePagerDragging||homePagerScrolling)return;
 
         int budget=HOME_CELLS_PER_FRAME;
         while(budget>0&&!homePageBuildQueue.isEmpty()) {
@@ -742,6 +747,7 @@ public class MainActivity extends Activity {
             // Keep currentHomePage tied to the actual scroll position. Setting it
             // to the destination early makes the first scroll callback mistake
             // the old page for a reversal and cancel a distant target's prefetch.
+            homePagerScrolling=true;
             homePager.smoothScrollTo(targetPage*width,0);
         } else {
             currentHomePage=targetPage;
@@ -779,6 +785,7 @@ public class MainActivity extends Activity {
     };
 
     private void onHomePagerScrolled() {
+        homePagerScrolling=true;
         int scrollX=homePager.getScrollX();
         if(scrollX!=lastHomePagerScrollX) {
             homePageBuildDirection=scrollX>lastHomePagerScrollX?1:-1;
@@ -800,11 +807,18 @@ public class MainActivity extends Activity {
         if(homePager==null||homeGrids.isEmpty()||homePagerDragging)return;
         int width=homePageWidth();
         int settledPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),homeGrids.size()-1));
-        preloadNearbyHomePages(settledPage,false);
         int target=settledPage*width;
         if(Math.abs(homePager.getScrollX()-target)>Ui.dp(this,2)) {
+            // A correction scroll will schedule another settle after its final frame.
             showHomePage(target/width,true);
+            return;
         }
+        homePagerScrolling=false;
+        // Remove distant cells only after motion stops; removeAllViews() during a
+        // fling forces main-thread hierarchy work in the middle of a frame.
+        trimDistantHomePages(settledPage);
+        preloadNearbyHomePages(settledPage,false,homePageBuildDirection);
+        scheduleHomePageBuildFrame();
     }
 
     private void updatePageIndicator() {
@@ -813,9 +827,8 @@ public class MainActivity extends Activity {
         int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
         if(nextPage==currentHomePage)return;
         currentHomePage=nextPage;
-        // Keep the live hierarchy bounded and have the next page ready before
-        // the next swipe settles.
-        trimDistantHomePages(currentHomePage);
+        // Queue only while scrolling. Actual view creation and hierarchy trimming
+        // are deferred until the fling has settled, keeping the gesture path light.
         preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
         updatePageDots(currentHomePage);
     }
