@@ -28,6 +28,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Choreographer;
 import android.view.DragEvent;
 import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
@@ -77,6 +78,16 @@ public class MainActivity extends Activity {
     // Keep page shells cheap; materialize app cells only for the visible neighbourhood.
     private final ArrayList<List<LauncherItem>> homePageItems = new ArrayList<>();
     private final ArrayList<Boolean> homePageBuilt = new ArrayList<>();
+    private final ArrayList<Integer> homePageBuildIndex = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuildQueued = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuildAnimate = new ArrayList<>();
+    private final ArrayList<Integer> homePageBuildQueue = new ArrayList<>();
+    private static final int HOME_CELLS_PER_FRAME = 3;
+    private boolean homeBuildFramePosted = false;
+    private final Choreographer.FrameCallback homeBuildFrame = frameTimeNanos -> {
+        homeBuildFramePosted = false;
+        runHomePageBuildFrame();
+    };
     private String homeEmptyMessage = "NO APPS AVAILABLE";
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
     private final Runnable pageSnap = this::snapHomePage;
@@ -132,6 +143,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        LauncherMotionEngine.configure(this);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -508,11 +520,15 @@ public class MainActivity extends Activity {
     }
 
     private void renderHomePages(List<LauncherItem> visible,boolean animate,String query) {
+        resetHomePageBuilds();
         pageTrack.removeAllViews();
         pageDots.removeAllViews();
         homeGrids.clear();
         homePageItems.clear();
         homePageBuilt.clear();
+        homePageBuildIndex.clear();
+        homePageBuildQueued.clear();
+        homePageBuildAnimate.clear();
         grid=null;
 
         int width=homePageWidth();
@@ -536,6 +552,9 @@ public class MainActivity extends Activity {
             int end=Math.min(visible.size(),start+pageCapacity);
             homePageItems.add(new ArrayList<>(visible.subList(start,end)));
             homePageBuilt.add(false);
+            homePageBuildIndex.add(0);
+            homePageBuildQueued.add(false);
+            homePageBuildAnimate.add(false);
             pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
 
             final int targetPage=page;
@@ -553,8 +572,8 @@ public class MainActivity extends Activity {
                 :String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
 
-        // Materialize only the current page and its immediate neighbours. The
-        // remaining page shells preserve swipe geometry without retaining cell views.
+        // Queue the active and neighbouring pages. Cells are added in small
+        // frame-scheduled batches rather than one large main-thread layout burst.
         preloadNearbyHomePages(currentHomePage,animate&&query.isEmpty());
         homePager.post(()->{
             homePager.scrollTo(currentHomePage*width,0);
@@ -563,38 +582,125 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void resetHomePageBuilds() {
+        cancelHomePageBuildFrame();
+        homePageBuildQueue.clear();
+    }
+
+    private void cancelHomePageBuildFrame() {
+        if(homeBuildFramePosted) {
+            Choreographer.getInstance().removeFrameCallback(homeBuildFrame);
+            homeBuildFramePosted=false;
+        }
+    }
+
+    private void scheduleHomePageBuildFrame() {
+        if(homeBuildFramePosted||homePageBuildQueue.isEmpty()||homePager==null
+                ||!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing())return;
+        homeBuildFramePosted=true;
+        Choreographer.getInstance().postFrameCallback(homeBuildFrame);
+    }
+
     private void buildHomePage(int page,boolean animate) {
         if(page<0||page>=homeGrids.size()||homePageBuilt.get(page))return;
-        GridLayout pageGrid=homeGrids.get(page);
-        List<LauncherItem> items=homePageItems.get(page);
-        int width=homePageWidth();
+        if(homePageBuildQueued.get(page)) {
+            if(animate)homePageBuildAnimate.set(page,true);
+            return;
+        }
+        homePageBuildQueued.set(page,true);
+        homePageBuildAnimate.set(page,animate);
+        homePageBuildQueue.add(page);
+        scheduleHomePageBuildFrame();
+    }
 
-        if(items.isEmpty()) {
-            TextView empty=text(homeEmptyMessage,11,Ui.secondaryText(),true);
-            empty.setGravity(Gravity.CENTER);
-            empty.setLetterSpacing(0.05f);
-            GridLayout.LayoutParams emptyParams=new GridLayout.LayoutParams();
-            emptyParams.width=width;
-            emptyParams.height=Ui.dp(this,144);
-            pageGrid.addView(empty,emptyParams);
-        } else {
-            int cell=width/columns;
-            for(int index=0;index<items.size();index++) {
+    private void runHomePageBuildFrame() {
+        if(!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing()
+                ||homePager==null)return;
+
+        int budget=HOME_CELLS_PER_FRAME;
+        while(budget>0&&!homePageBuildQueue.isEmpty()) {
+            int page=homePageBuildQueue.get(0);
+            if(page<0||page>=homeGrids.size()) {
+                homePageBuildQueue.remove(0);
+                continue;
+            }
+
+            GridLayout pageGrid=homeGrids.get(page);
+            List<LauncherItem> items=homePageItems.get(page);
+            if(items.isEmpty()) {
+                if(pageGrid.getChildCount()==0) {
+                    TextView empty=text(homeEmptyMessage,11,Ui.secondaryText(),true);
+                    empty.setGravity(Gravity.CENTER);
+                    empty.setLetterSpacing(0.05f);
+                    GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                    params.width=homePageWidth();
+                    params.height=Ui.dp(this,144);
+                    pageGrid.addView(empty,params);
+                }
+                finishHomePageBuild(page);
+                continue;
+            }
+
+            int index=homePageBuildIndex.get(page);
+            int limit=Math.min(items.size(),index+budget);
+            while(index<limit) {
                 LauncherItem item=items.get(index);
-                LinearLayout cellView=makeCell(item,animate&&index<columns);
+                boolean animate=homePageBuildAnimate.get(page)&&index<columns;
+                LinearLayout cellView=makeCell(item,animate);
                 GridLayout.LayoutParams params=new GridLayout.LayoutParams();
-                params.width=cell;
+                params.width=homePageWidth()/columns;
                 params.height=Ui.dp(this,104);
                 pageGrid.addView(cellView,params);
+                index++;
+                budget--;
+            }
+            homePageBuildIndex.set(page,index);
+            if(index>=items.size())finishHomePageBuild(page);
+        }
+
+        if(!homePageBuildQueue.isEmpty())scheduleHomePageBuildFrame();
+    }
+
+    private void finishHomePageBuild(int page) {
+        homePageBuilt.set(page,true);
+        homePageBuildQueued.set(page,false);
+        homePageBuildAnimate.set(page,false);
+        homePageBuildIndex.set(page,homePageItems.get(page).size());
+        if(!homePageBuildQueue.isEmpty()&&homePageBuildQueue.get(0)==page)
+            homePageBuildQueue.remove(0);
+    }
+
+    private void trimDistantHomePages(int center) {
+        // Keep only the visible page and its immediate neighbours populated.
+        // The lightweight page shells remain so horizontal swipe geometry is stable.
+        for(int i=homePageBuildQueue.size()-1;i>=0;i--) {
+            int page=homePageBuildQueue.get(i);
+            if(Math.abs(page-center)>1) {
+                homePageBuildQueue.remove(i);
+                if(page>=0&&page<homePageBuildQueued.size()) {
+                    homePageBuildQueued.set(page,false);
+                    homePageBuildIndex.set(page,0);
+                    homePageBuildAnimate.set(page,false);
+                }
             }
         }
-        homePageBuilt.set(page,true);
+        for(int page=0;page<homeGrids.size();page++) {
+            if(Math.abs(page-center)<=1)continue;
+            if(homePageBuilt.get(page)||homePageBuildIndex.get(page)>0
+                    ||homeGrids.get(page).getChildCount()>0) {
+                homeGrids.get(page).removeAllViews();
+                homePageBuilt.set(page,false);
+                homePageBuildIndex.set(page,0);
+                homePageBuildQueued.set(page,false);
+                homePageBuildAnimate.set(page,false);
+            }
+        }
     }
 
     private void preloadNearbyHomePages(int center,boolean animateCenter) {
         buildHomePage(center,animateCenter);
-        buildHomePage(center-1,false);
         buildHomePage(center+1,false);
+        buildHomePage(center-1,false);
     }
 
     private int homePageWidth() {
@@ -605,6 +711,7 @@ public class MainActivity extends Activity {
         int width=homePageWidth();
         currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
         if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
+        preloadNearbyHomePages(currentHomePage,false);
         if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
         updatePageIndicator();
     }
@@ -666,9 +773,10 @@ public class MainActivity extends Activity {
         int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
         if(nextPage==currentHomePage)return;
         currentHomePage=nextPage;
-        // If a fast multi-page fling reaches an unprepared page, build it once
-        // as it becomes the active page; normal adjacent swipes are preloaded.
-        buildHomePage(currentHomePage,false);
+        // Keep the live hierarchy bounded and have the next page ready before
+        // the next swipe settles.
+        trimDistantHomePages(currentHomePage);
+        preloadNearbyHomePages(currentHomePage,false);
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
             dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
@@ -1151,7 +1259,7 @@ public class MainActivity extends Activity {
         releaseActiveSurface();
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
-        if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);return;}
+        if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);scheduleHomePageBuildFrame();return;}
         if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
         else if(destination==SurfaceNavigation.SETTINGS)settings();
@@ -1221,6 +1329,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed=true;
+        scheduleHomePageBuildFrame();
         if(iconsTrimmed||packagesDirty||appLoadPaused) {
             iconsTrimmed=false;
             packagesDirty=false;
@@ -1232,6 +1341,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         activityResumed=false;
+        cancelHomePageBuildFrame();
         // Do not keep scanning installed apps or rasterizing icons while another app is foreground.
         // Invalidate even a completed worker whose UI result is still queued on the main thread.
         if(appLoadNeedsApply) {
@@ -1270,10 +1380,12 @@ public class MainActivity extends Activity {
             if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
 
             if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+            cancelHomePageBuildFrame();
             releaseActiveSurface();
             activeSurfaceView=null;
             activeSurface=SurfaceNavigation.HOME;
             setContentView(homeFrame);
+            scheduleHomePageBuildFrame();
             iconCache.trim();
             iconsTrimmed=true;
             if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
@@ -1295,6 +1407,7 @@ public class MainActivity extends Activity {
         packageRefreshHandler.removeCallbacks(packageRefresh);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+        cancelHomePageBuildFrame();
         releaseActiveSurface();
         activeSurfaceView=null;
         if(activeFolderDialog!=null)activeFolderDialog.dismiss();

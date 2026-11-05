@@ -5,8 +5,6 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.MotionEvent;
-import android.view.animation.Interpolator;
-import android.view.animation.PathInterpolator;
 
 public final class Ui {
     public static final int WHITE = Color.rgb(245, 247, 251);
@@ -21,9 +19,6 @@ public final class Ui {
     public static final int BLACK = Color.rgb(6, 8, 12);
     public static int ICON_DP = 46;
     private static boolean darkGlass = true;
-    // Reuse curves: touch feedback runs often, so don't allocate interpolators per gesture.
-    private static final Interpolator EASE_OUT = new PathInterpolator(0.20f, 0.80f, 0.20f, 1.00f);
-    private static final Interpolator PRESS_IN = new PathInterpolator(0.30f, 0.00f, 0.70f, 0.20f);
 
     private Ui() {}
 
@@ -57,13 +52,7 @@ public final class Ui {
     }
 
     public static void enter(View view, boolean enabled, int distance) {
-        if (!enabled || view == null) return;
-        // Translation is compositor-friendly. Avoid alpha here: large translucent
-        // views can require off-screen buffers and extra fill-rate on older GPUs.
-        view.animate().cancel();
-        view.setTranslationY(dp(view.getContext(), distance));
-        view.animate().translationY(0f).setDuration(210)
-            .setInterpolator(EASE_OUT).start();
+        LauncherMotionEngine.enter(view,enabled,distance);
     }
 
     /** Immediate visual response while the finger is down; returns false so normal click/long-click handling continues. */
@@ -77,31 +66,10 @@ public final class Ui {
 
     /** Use inside an existing touch listener when a view also handles gestures or drag-and-drop. */
     public static void touchFeedback(View view, MotionEvent event, boolean enabled) {
-        if (!enabled || view == null || event == null) return;
-        int action = event.getActionMasked();
-        if (action == MotionEvent.ACTION_DOWN) {
-            view.animate().cancel();
-            view.animate().scaleX(0.975f).scaleY(0.975f)
-                .setDuration(95).setInterpolator(PRESS_IN).start();
-        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            // Stop the press-in animator before reversing direction. This avoids
-            // competing property animations when taps are very quick.
-            view.animate().cancel();
-            view.animate().scaleX(1f).scaleY(1f)
-                .setDuration(175).setInterpolator(EASE_OUT).start();
-        }
+        LauncherMotionEngine.touchFeedback(view,event,enabled);
     }
 
     public static void press(View view, boolean enabled) {
-        if (!enabled) return;
-        view.animate().cancel();
-        view.animate().scaleX(0.975f).scaleY(0.975f).setDuration(90)
-            .setInterpolator(PRESS_IN)
-            .withEndAction(() -> {
-                if (view.getParent() == null) return;
-                view.animate().scaleX(1f).scaleY(1f)
-                    .setDuration(175).setInterpolator(EASE_OUT).start();
-            })
-            .start();
+        LauncherMotionEngine.press(view,enabled);
     }
 }
