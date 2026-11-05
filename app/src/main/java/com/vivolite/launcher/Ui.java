@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.view.View;
+import android.view.MotionEvent;
 import android.view.animation.DecelerateInterpolator;
 
 public final class Ui {
@@ -55,8 +56,30 @@ public final class Ui {
         if (!enabled) return;
         view.setAlpha(0f);
         view.setTranslationY(dp(view.getContext(), distance));
-        view.animate().alpha(1f).translationY(0f).setDuration(210)
-            .setInterpolator(new DecelerateInterpolator()).start();
+        view.animate().alpha(1f).translationY(0f).setDuration(155)
+            .setInterpolator(new DecelerateInterpolator(1.35f)).start();
+    }
+
+    /** Immediate visual response while the finger is down; returns false so normal click/long-click handling continues. */
+    public static void attachTouchFeedback(View view, boolean enabled) {
+        if (view == null || !enabled) return;
+        view.setOnTouchListener((target, event) -> {
+            touchFeedback(target, event, true);
+            return false;
+        });
+    }
+
+    /** Use inside an existing touch listener when a view also handles gestures or drag-and-drop. */
+    public static void touchFeedback(View view, MotionEvent event, boolean enabled) {
+        if (!enabled || view == null || event == null) return;
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            view.animate().scaleX(0.965f).scaleY(0.965f)
+                .setDuration(65).setInterpolator(new DecelerateInterpolator(1.5f)).start();
+        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            view.animate().scaleX(1f).scaleY(1f)
+                .setDuration(115).setInterpolator(new DecelerateInterpolator(1.5f)).start();
+        }
     }
 
     public static void press(View view, boolean enabled) {
