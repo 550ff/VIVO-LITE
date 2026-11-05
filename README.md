@@ -7,7 +7,7 @@ A refined, lightweight Android launcher for the Vivo Y21L (Android 5.1.1 / API 2
 - Dark glass surfaces with quieter borders and consistent typography
 - Refined home screen, clock, app collection, dock and page navigation
 - Redesigned control centre with quick controls, brightness and media volume
-- App library, folders, widgets, icon packs, notifications and Smart Edge tools
+- Swipe-based multi-page home screens, folders, widgets, icon packs, notifications and Smart Edge tools
 - Local preferences; no ads, analytics, network calls or background service
 
 ## Compatibility
