@@ -490,6 +490,9 @@ public class MainActivity extends Activity {
         int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
         int pageCapacity=Math.max(columns,columns*4);
         int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
+        // Clamp before creating the dots so the selected page is styled correctly
+        // when filtering or uninstalling apps reduces the number of home pages.
+        currentHomePage=Math.min(currentHomePage,pageCount-1);
         int cell=width/columns;
         for(int page=0;page<pageCount;page++) {
             ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
@@ -511,7 +514,6 @@ public class MainActivity extends Activity {
             dot.setOnClickListener(v->showHomePage(targetPage,true));
             Ui.attachTouchFeedback(dot,storage.animations());
         }
-        currentHomePage=Math.min(currentHomePage,pageCount-1);
         if(count!=null)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
         homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
