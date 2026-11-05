@@ -52,6 +52,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -109,6 +112,15 @@ public class MainActivity extends Activity {
     };
     private final Handler searchRenderHandler = new Handler(Looper.getMainLooper());
     private Runnable searchRender;
+    private final Handler appLoadHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService appLoader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "VIVO-LITE-AppScan");
+        thread.setPriority(Thread.NORM_PRIORITY - 1);
+        return thread;
+    });
+    private Future<?> appLoadTask;
+    private int appLoadGeneration = 0;
+    private boolean homeRenderedOnce = false;
 
     public static Drawable iconFor(String id) { return DRAWABLES.get(id); }
 
@@ -161,10 +173,12 @@ public class MainActivity extends Activity {
         TextView control = pill("CONTROL");
         top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
         control.setOnClickListener(v->showControlCenter());
+        Ui.attachTouchFeedback(control,storage.animations());
         TextView addWidget=pill("+ WIDGET");
         LinearLayout.LayoutParams widgetButtonParams=new LinearLayout.LayoutParams(Ui.dp(this,76),Ui.dp(this,34));
         widgetButtonParams.rightMargin=Ui.dp(this,7);top.addView(addWidget,1,widgetButtonParams);
         addWidget.setOnClickListener(v->pickWidget());
+        Ui.attachTouchFeedback(addWidget,storage.animations());
         root.addView(top);
 
         clock = new TextClock(this);
@@ -207,6 +221,7 @@ public class MainActivity extends Activity {
         pulseParams.bottomMargin=Ui.dp(this,8);root.addView(pulseCapsule,pulseParams);
         pulseCapsule.setOnClickListener(v->showControlCenter());
         pulseCapsule.setOnLongClickListener(v->{showSmartEdge();return true;});
+        Ui.attachTouchFeedback(pulseCapsule,storage.animations());
 
         widgetShelf=new LinearLayout(this);widgetShelf.setOrientation(LinearLayout.VERTICAL);
         root.addView(widgetShelf,new LinearLayout.LayoutParams(-1,-2));
@@ -264,6 +279,7 @@ public class MainActivity extends Activity {
         edgeHandle.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,10));edgeHandle.setAlpha(0.68f);
         FrameLayout.LayoutParams edgeParams=new FrameLayout.LayoutParams(Ui.dp(this,20),Ui.dp(this,88),Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         homeFrame.addView(edgeHandle,edgeParams);edgeHandle.setOnClickListener(v->showSmartEdge());
+        Ui.attachTouchFeedback(edgeHandle,storage.animations());
         setContentView(homeFrame);
 
         search.addTextChangedListener(new TextWatcher() {
@@ -325,29 +341,58 @@ public class MainActivity extends Activity {
     }
 
     private void loadApps() {
-        iconPackManager.select(storage.getIconPack());
-        apps.clear(); DRAWABLES.clear();
-        PackageManager pm=getPackageManager();
-        Intent query=new Intent(Intent.ACTION_MAIN);query.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found=pm.queryIntentActivities(query,0);
-        Set<String> seen=new HashSet<>();
-        for(ResolveInfo r:found) {
-            if(r.activityInfo==null || r.activityInfo.packageName.equals(getPackageName()))continue;
-            String pkg=r.activityInfo.packageName, cls=r.activityInfo.name, id=pkg+"/"+cls;
-            if(!seen.add(id))continue;
-            CharSequence label=r.loadLabel(pm);
-            LauncherItem item=LauncherItem.app(id,label==null?cls.substring(cls.lastIndexOf('.')+1):String.valueOf(label),pkg,cls);
-            apps.add(item);
-            Drawable drawable=iconPackManager.icon(pkg,cls);
-            boolean monochrome=drawable==null;
-            if(monochrome)drawable=r.loadIcon(pm);
-            DRAWABLES.put(id,iconCache.get(id,drawable,monochrome));
-        }
-        Collections.sort(apps,new Comparator<LauncherItem>() {
-            public int compare(LauncherItem a,LauncherItem b){return a.title.compareToIgnoreCase(b.title);}
+        final int generation = ++appLoadGeneration;
+        final String selectedPack = storage.getIconPack();
+        final Context appContext = getApplicationContext();
+        if (appLoadTask != null) appLoadTask.cancel(true);
+
+        appLoadTask = appLoader.submit(() -> {
+            PackageManager pm = appContext.getPackageManager();
+            IconPackManager loadedPack = new IconPackManager(appContext);
+            loadedPack.select(selectedPack);
+            ArrayList<LauncherItem> loadedApps = new ArrayList<>();
+            Map<String,Drawable> loadedDrawables = new HashMap<>();
+            Intent query = new Intent(Intent.ACTION_MAIN);
+            query.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> found = pm.queryIntentActivities(query, 0);
+            Set<String> seen = new HashSet<>();
+
+            for (ResolveInfo r : found) {
+                if (Thread.currentThread().isInterrupted()) return;
+                if (r.activityInfo == null || r.activityInfo.packageName.equals(getPackageName())) continue;
+                String pkg = r.activityInfo.packageName;
+                String cls = r.activityInfo.name;
+                String id = pkg + "/" + cls;
+                if (!seen.add(id)) continue;
+                CharSequence label = r.loadLabel(pm);
+                LauncherItem item = LauncherItem.app(
+                    id, label == null ? cls.substring(cls.lastIndexOf('.') + 1) : String.valueOf(label),
+                    pkg, cls
+                );
+                loadedApps.add(item);
+                Drawable drawable = loadedPack.icon(pkg, cls);
+                boolean monochrome = drawable == null;
+                if (monochrome) drawable = r.loadIcon(pm);
+                loadedDrawables.put(id, iconCache.get(id, drawable, monochrome));
+            }
+
+            Collections.sort(loadedApps, new Comparator<LauncherItem>() {
+                public int compare(LauncherItem a, LauncherItem b) {
+                    return a.title.compareToIgnoreCase(b.title);
+                }
+            });
+
+            appLoadHandler.post(() -> {
+                if (generation != appLoadGeneration || isFinishing()) return;
+                iconPackManager = loadedPack;
+                apps.clear();
+                apps.addAll(loadedApps);
+                DRAWABLES.clear();
+                DRAWABLES.putAll(loadedDrawables);
+                restoreHomeItems();
+                render(search == null ? "" : search.getText().toString());
+            });
         });
-        restoreHomeItems();
-        render(search==null?"":search.getText().toString());
     }
 
     private void restoreHomeItems() {
@@ -414,7 +459,10 @@ public class MainActivity extends Activity {
     }
 
     private void render(String filter) {
-        render(filter,true,true);
+        if (homePager == null) return;
+        boolean animateFirstRender = !homeRenderedOnce;
+        homeRenderedOnce = true;
+        render(filter,animateFirstRender,true);
     }
 
     private void render(String filter,boolean animate,boolean refreshDock) {
@@ -460,6 +508,7 @@ public class MainActivity extends Activity {
             dot.setGravity(Gravity.CENTER);dot.setContentDescription("Home page "+(page+1));
             pageDots.addView(dot,new LinearLayout.LayoutParams(Ui.dp(this,22),Ui.dp(this,20)));
             dot.setOnClickListener(v->showHomePage(targetPage,true));
+            Ui.attachTouchFeedback(dot,storage.animations());
         }
         currentHomePage=Math.min(currentHomePage,pageCount-1);
         if(count!=null)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
@@ -580,7 +629,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
         np.topMargin=Ui.dp(this,4);cell.addView(name,np);
         cell.setOnClickListener(v->{
-            Ui.press(cell,storage.animations());
             if(item.isFolder())openFolder(item);else launch(item.id);
         });
         cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
@@ -591,6 +639,7 @@ public class MainActivity extends Activity {
                 armedDragId = null;
                 return true;
             }
+            Ui.touchFeedback(v,event,storage.animations());
             return false;
         });
         cell.setOnDragListener((v,event)->handleDrop(v,item,event));
@@ -786,7 +835,8 @@ public class MainActivity extends Activity {
         icon.setImageDrawable(DRAWABLES.get(app.id));icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,Math.min(Ui.ICON_DP,48)),1);
         dock.addView(icon,p);
-        icon.setOnClickListener(v->{Ui.press(icon,storage.animations());launch(app.id);});
+        icon.setOnClickListener(v->launch(app.id));
+        Ui.attachTouchFeedback(icon,storage.animations());
         icon.setOnLongClickListener(v->{
             new AlertDialog.Builder(this).setItems(new String[]{"Move left","Move right","Remove favourite"},(d,n)->{
                 ArrayList<String> order=new ArrayList<>(storage.getOrder("dock_order"));
@@ -1065,7 +1115,7 @@ public class MainActivity extends Activity {
         int selected=packages.indexOf(storage.getIconPack());if(selected<0)selected=0;
         new AlertDialog.Builder(this).setTitle("APP ICON FAMILY")
             .setSingleChoiceItems(labels.toArray(new String[0]),selected,(dialog,which)->{
-                storage.setIconPack(packages.get(which));iconPackManager.select(packages.get(which));iconCache.trim();loadApps();dialog.dismiss();
+                storage.setIconPack(packages.get(which));iconCache.trim();loadApps();dialog.dismiss();
             }).setNegativeButton("CANCEL",null).show();
     }
 
@@ -1126,6 +1176,8 @@ public class MainActivity extends Activity {
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         if(level>=TRIM_MEMORY_UI_HIDDEN&&iconCache!=null) {
+            appLoadGeneration++;
+            if(appLoadTask!=null)appLoadTask.cancel(true);
             DRAWABLES.clear();
             clearImageDrawables(root);
             if(activeFolderDialog!=null)activeFolderDialog.dismiss();
@@ -1151,6 +1203,9 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        appLoadGeneration++;
+        if(appLoadTask!=null)appLoadTask.cancel(true);
+        appLoader.shutdownNow();
         packageRefreshHandler.removeCallbacks(packageRefresh);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
