@@ -1027,8 +1027,7 @@ public class MainActivity extends Activity {
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
         if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);return;}
-        if(destination==SurfaceNavigation.LIBRARY){setContentView(homeFrame);return;}
-        else if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
         else if(destination==SurfaceNavigation.SETTINGS)settings();
     }
