@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
     private LinearLayout pageTrack, pageDots;
     private final ArrayList<GridLayout> homeGrids = new ArrayList<>();
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
-    private Runnable pageSnap;
+    private final Runnable pageSnap = this::snapHomePage;
     private boolean homePagerDragging = false;
     private int currentHomePage = 0;
     private static final int WIDGET_HOST_ID=0x564C;
@@ -595,8 +595,7 @@ public class MainActivity extends Activity {
 
     private void schedulePageSnap() {
         if(homePager==null||homeGrids.isEmpty())return;
-        if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
-        pageSnap=()->snapHomePage();
+        pageSnapHandler.removeCallbacks(pageSnap);
         pageSnapHandler.postDelayed(pageSnap,140);
     }
 

@@ -84,18 +84,24 @@ public final class Ui {
             view.animate().scaleX(0.975f).scaleY(0.975f)
                 .setDuration(95).setInterpolator(PRESS_IN).start();
         } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            // Stop the press-in animator before reversing direction. This avoids
+            // competing property animations when taps are very quick.
+            view.animate().cancel();
             view.animate().scaleX(1f).scaleY(1f)
-                .setDuration(185).setInterpolator(EASE_OUT).start();
+                .setDuration(175).setInterpolator(EASE_OUT).start();
         }
     }
 
     public static void press(View view, boolean enabled) {
         if (!enabled) return;
         view.animate().cancel();
-        view.animate().scaleX(0.975f).scaleY(0.975f).setDuration(95)
+        view.animate().scaleX(0.975f).scaleY(0.975f).setDuration(90)
             .setInterpolator(PRESS_IN)
-            .withEndAction(() -> view.animate().scaleX(1f).scaleY(1f)
-                .setDuration(185).setInterpolator(EASE_OUT).start())
+            .withEndAction(() -> {
+                if (view.getParent() == null) return;
+                view.animate().scaleX(1f).scaleY(1f)
+                    .setDuration(175).setInterpolator(EASE_OUT).start();
+            })
             .start();
     }
 }
