@@ -57,6 +57,7 @@ public class FolderDialog extends Dialog {
             label.setGravity(Gravity.CENTER); label.setSingleLine(true);
             cell.addView(label,new LinearLayout.LayoutParams(Ui.dp(context,78),Ui.dp(context,24)));
             cell.setOnClickListener(v -> listener.onLaunch(found.id));
+            Ui.attachTouchFeedback(cell,animations);
             cell.setOnLongClickListener(v -> {
                 folder.children.remove(found.id);
                 listener.onChanged(title.getText().toString(), folder.children);
@@ -81,6 +82,7 @@ public class FolderDialog extends Dialog {
             listener.onChanged(title.getText().toString().trim(), folder.children);
             dismiss();
         });
+        Ui.attachTouchFeedback(done,animations);
         setContentView(box);
         getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         getWindow().setLayout(Ui.dp(context,300),-2);
