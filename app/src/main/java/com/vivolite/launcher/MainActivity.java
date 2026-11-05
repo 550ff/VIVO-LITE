@@ -738,8 +738,16 @@ public class MainActivity extends Activity {
         if(currentHomePage!=previousPage)homePageBuildDirection=currentHomePage>previousPage?1:-1;
         if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
         preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
-        if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
-        updatePageIndicator();
+        if(smooth) {
+            // Keep the requested destination highlighted while the scroller is
+            // travelling; reading the old scrollX here would revert the target.
+            updatePageDots(currentHomePage);
+            homePager.smoothScrollTo(currentHomePage*width,0);
+        } else {
+            homePager.scrollTo(currentHomePage*width,0);
+            lastHomePagerScrollX=homePager.getScrollX();
+            updatePageIndicator();
+        }
     }
 
     private void editQuickNote() {
@@ -808,13 +816,18 @@ public class MainActivity extends Activity {
         // the next swipe settles.
         trimDistantHomePages(currentHomePage);
         preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
+        updatePageDots(currentHomePage);
+    }
+
+    private void updatePageDots(int selectedPage) {
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
-            dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
-            dot.setText(i==currentHomePage?"━":"•");
-            dot.setTextSize(i==currentHomePage?13:10);
+            dot.setTextColor(i==selectedPage?Ui.ACCENT:Ui.secondaryText());
+            dot.setText(i==selectedPage?"━":"•");
+            dot.setTextSize(i==selectedPage?13:10);
         }
-        if(count!=null&&pageDots.getChildCount()>0)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageDots.getChildCount()));
+        if(count!=null&&pageDots.getChildCount()>0)
+            count.setText(String.format(Locale.ROOT,"%02d / %02d",selectedPage+1,pageDots.getChildCount()));
     }
 
     private LinearLayout makeCell(LauncherItem item,boolean animate) {
