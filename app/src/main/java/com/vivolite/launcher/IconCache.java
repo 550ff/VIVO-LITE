@@ -35,7 +35,13 @@ public class IconCache {
         Bitmap bitmap = cache.get(cacheKey);
         if (bitmap == null) {
             int size = (int)(48 * context.getResources().getDisplayMetrics().density + 0.5f);
-            bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            try {
+                bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            } catch (OutOfMemoryError exhausted) {
+                // Keep the launcher usable under memory pressure; this icon can remain native.
+                cache.evictAll();
+                return source;
+            }
             Canvas canvas = new Canvas(bitmap);
             source.setBounds(0, 0, size, size);
             ColorFilter previous = source.getColorFilter();
