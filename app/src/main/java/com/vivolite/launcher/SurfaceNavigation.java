@@ -80,5 +80,6 @@ final class SurfaceNavigation extends LinearLayout {
                 ((MainActivity) context).navigateToSurface(destination);
             }
         });
+        Ui.attachTouchFeedback(item,true);
     }
 }
