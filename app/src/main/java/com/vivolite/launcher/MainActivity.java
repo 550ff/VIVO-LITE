@@ -87,7 +87,6 @@ public class MainActivity extends Activity {
     private TextClock clock, date;
     private TextView count;
     private FolderDialog activeFolderDialog;
-    private AppLibraryScreen activeLibraryScreen;
     private View activeSurfaceView;
     private NotificationScreen activeNotificationScreen;
     private int activeSurface = SurfaceNavigation.HOME;
@@ -105,7 +104,7 @@ public class MainActivity extends Activity {
     private String armedDragId;
     private final Handler packageRefreshHandler = new Handler(Looper.getMainLooper());
     private final Runnable packageRefresh = () -> {
-        if(activityResumed){loadApps();if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();}
+        if(activityResumed){loadApps();}
         else packagesDirty=true;
     };
     private final Handler searchRenderHandler = new Handler(Looper.getMainLooper());
@@ -159,10 +158,6 @@ public class MainActivity extends Activity {
         strap.setLetterSpacing(0.12f);
         brandBlock.addView(strap);
         top.addView(brandBlock,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
-        TextView library = pill("LIBRARY");
-        LinearLayout.LayoutParams libraryP=new LinearLayout.LayoutParams(Ui.dp(this,70),Ui.dp(this,34));
-        libraryP.rightMargin=Ui.dp(this,7);top.addView(library,libraryP);
-        library.setOnClickListener(v->openLibrary());
         TextView control = pill("CONTROL");
         top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
         control.setOnClickListener(v->showControlCenter());
@@ -184,7 +179,7 @@ public class MainActivity extends Activity {
             if(event.getAction()==MotionEvent.ACTION_UP){
                 float delta=event.getY()-clockTouchY[0];
                 if(Math.abs(delta)>Ui.dp(this,42)) {
-                    if(delta<0)openLibrary();
+                    if(delta<0)showHomePage(currentHomePage+1,true);
                     else showControlCenter();
                 }
                 return true;
@@ -462,7 +457,7 @@ public class MainActivity extends Activity {
             }
             pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
             final int targetPage=page;
-            TextView dot=text("●",9,page==currentHomePage?Ui.primaryText():Ui.secondaryText(),false);
+            TextView dot=text(page==currentHomePage?"━":"•",page==currentHomePage?13:10,page==currentHomePage?Ui.ACCENT:Ui.secondaryText(),false);
             dot.setGravity(Gravity.CENTER);dot.setContentDescription("Home page "+(page+1));
             pageDots.addView(dot,new LinearLayout.LayoutParams(Ui.dp(this,22),Ui.dp(this,20)));
             dot.setOnClickListener(v->showHomePage(targetPage,true));
@@ -553,8 +548,9 @@ public class MainActivity extends Activity {
         currentHomePage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
-            dot.setTextColor(i==currentHomePage?Ui.primaryText():Ui.secondaryText());
-            dot.setText(i==currentHomePage?"●":"○");
+            dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
+            dot.setText(i==currentHomePage?"━":"•");
+            dot.setTextSize(i==currentHomePage?13:10);
         }
     }
 
@@ -884,12 +880,6 @@ public class MainActivity extends Activity {
         catch(Exception e) { try { startActivity(new Intent(fallback)); } catch(Exception ignored) {} }
     }
 
-    private void openLibrary() {
-        AppLibraryScreen screen = new AppLibraryScreen(this, apps, this::launch);
-        showSurface(screen,SurfaceNavigation.LIBRARY);
-        activeLibraryScreen=screen;
-    }
-
     private void showNotifications() {
         NotificationScreen screen=new NotificationScreen(this);
         showSurface(screen,SurfaceNavigation.NOTIFICATIONS);
@@ -1037,7 +1027,7 @@ public class MainActivity extends Activity {
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
         if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);return;}
-        if(destination==SurfaceNavigation.LIBRARY)openLibrary();
+        if(destination==SurfaceNavigation.LIBRARY){setContentView(homeFrame);return;}
         else if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
         else if(destination==SurfaceNavigation.SETTINGS)settings();
@@ -1100,8 +1090,7 @@ public class MainActivity extends Activity {
         search.setText(query);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         render(query,false,true);
-        if(previousSurface==SurfaceNavigation.LIBRARY)openLibrary();
-        else if(previousSurface==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        if(previousSurface==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(previousSurface==SurfaceNavigation.CONTROL)showControlCenter();
         else if(previousSurface==SurfaceNavigation.SETTINGS)settings();
     }
@@ -1113,7 +1102,6 @@ public class MainActivity extends Activity {
             iconsTrimmed=false;
             packagesDirty=false;
             loadApps();
-            if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();
         }
         if(activeNotificationScreen!=null)activeNotificationScreen.onShown();
     }
@@ -1126,7 +1114,6 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if(smartEdgeOverlay!=null){closeSmartEdge();return;}
-        if(activeSurface==SurfaceNavigation.LIBRARY&&activeLibraryScreen!=null&&activeLibraryScreen.handleBack())return;
         if(activeSurface==SurfaceNavigation.SETTINGS&&activeSurfaceView instanceof SettingsScreen&&((SettingsScreen)activeSurfaceView).handleBack())return;
         if(activeSurface!=SurfaceNavigation.HOME){navigateToSurface(SurfaceNavigation.HOME);return;}
         if(search!=null&&search.length()>0){
