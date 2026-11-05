@@ -273,6 +273,8 @@ public class MainActivity extends Activity {
         root.addView(heading);
 
         homePager=new HorizontalScrollView(this);
+        homePagerDragging=false;
+        homePagerScrolling=false;
         homePager.setFillViewport(true);
         homePager.setHorizontalScrollBarEnabled(false);
         homePager.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -752,6 +754,7 @@ public class MainActivity extends Activity {
         } else {
             currentHomePage=targetPage;
             homePager.scrollTo(targetPage*width,0);
+            homePagerScrolling=false;
             lastHomePagerScrollX=homePager.getScrollX();
             updatePageIndicator();
         }
