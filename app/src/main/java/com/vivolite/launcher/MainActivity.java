@@ -74,6 +74,9 @@ public class MainActivity extends Activity {
     private HorizontalScrollView homePager;
     private LinearLayout pageTrack, pageDots;
     private final ArrayList<GridLayout> homeGrids = new ArrayList<>();
+    // Keep page shells cheap; materialize app cells only for the visible neighbourhood.
+    private final ArrayList<List<LauncherItem>> homePageItems = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuilt = new ArrayList<>();
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
     private final Runnable pageSnap = this::snapHomePage;
     private boolean homePagerDragging = false;
@@ -504,47 +507,89 @@ public class MainActivity extends Activity {
     }
 
     private void renderHomePages(List<LauncherItem> visible,boolean animate,String query) {
-        pageTrack.removeAllViews();pageDots.removeAllViews();homeGrids.clear();grid=null;
+        pageTrack.removeAllViews();
+        pageDots.removeAllViews();
+        homeGrids.clear();
+        homePageItems.clear();
+        homePageBuilt.clear();
+        grid=null;
+
         int width=homePageWidth();
-        int pageCapacity=Math.max(columns,columns*4);
+        int pageCapacity=columns*4;
         int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
-        // Clamp before creating the dots so the selected page is styled correctly
-        // when filtering or uninstalling apps reduces the number of home pages.
         currentHomePage=Math.min(currentHomePage,pageCount-1);
-        int cell=width/columns;
+
         for(int page=0;page<pageCount;page++) {
-            ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
-            GridLayout pageGrid=new GridLayout(this);pageGrid.setColumnCount(columns);homeGrids.add(pageGrid);
+            ScrollView scroll=new ScrollView(this);
+            scroll.setFillViewport(false);
+            scroll.setVerticalScrollBarEnabled(false);
+
+            GridLayout pageGrid=new GridLayout(this);
+            pageGrid.setColumnCount(columns);
+            homeGrids.add(pageGrid);
             if(grid==null)grid=pageGrid;
             scroll.addView(pageGrid,new ScrollView.LayoutParams(-1,-2));
-            int start=page*pageCapacity,end=Math.min(visible.size(),start+pageCapacity);
-            if(visible.isEmpty()) {
-                TextView empty=text(query.isEmpty()?"NO APPS AVAILABLE":"NO MATCHES  ·  TRY ANOTHER NAME",11,Ui.secondaryText(),true);
-                empty.setGravity(Gravity.CENTER);
-                empty.setLetterSpacing(0.05f);
-                GridLayout.LayoutParams emptyParams=new GridLayout.LayoutParams();
-                emptyParams.width=width;emptyParams.height=Ui.dp(this,144);
-                pageGrid.addView(empty,emptyParams);
-            } else {
-                for(int index=start;index<end;index++) {
-                    LauncherItem item=visible.get(index);
-                    LinearLayout cellView=makeCell(item,animate&&query.isEmpty()&&index-start<columns);
-                    GridLayout.LayoutParams params=new GridLayout.LayoutParams();
-                    params.width=cell;params.height=Ui.dp(this,104);pageGrid.addView(cellView,params);
-                }
-            }
+
+            int start=page*pageCapacity;
+            int end=Math.min(visible.size(),start+pageCapacity);
+            homePageItems.add(new ArrayList<>(visible.subList(start,end)));
+            homePageBuilt.add(false);
             pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
+
             final int targetPage=page;
-            TextView dot=text(page==currentHomePage?"━":"•",page==currentHomePage?13:10,page==currentHomePage?Ui.ACCENT:Ui.secondaryText(),false);
-            dot.setGravity(Gravity.CENTER);dot.setContentDescription("Home page "+(page+1));
+            TextView dot=text(page==currentHomePage?"━":"•",page==currentHomePage?13:10,
+                    page==currentHomePage?Ui.ACCENT:Ui.secondaryText(),false);
+            dot.setGravity(Gravity.CENTER);
+            dot.setContentDescription("Home page "+(page+1));
             pageDots.addView(dot,new LinearLayout.LayoutParams(Ui.dp(this,22),Ui.dp(this,20)));
             dot.setOnClickListener(v->showHomePage(targetPage,true));
             Ui.attachTouchFeedback(dot,storage.animations());
         }
-        if(count!=null)count.setText(visible.isEmpty()?(query.isEmpty()?"0 ITEMS":"NO MATCHES"):String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
+
+        if(count!=null)count.setText(visible.isEmpty()
+                ?(query.isEmpty()?"0 ITEMS":"NO MATCHES")
+                :String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
+
+        // Materialize only the current page and its immediate neighbours. The
+        // remaining page shells preserve swipe geometry without retaining cell views.
+        preloadNearbyHomePages(currentHomePage,animate&&query.isEmpty());
         homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
         updatePageIndicator();
+    }
+
+    private void buildHomePage(int page,boolean animate) {
+        if(page<0||page>=homeGrids.size()||homePageBuilt.get(page))return;
+        GridLayout pageGrid=homeGrids.get(page);
+        List<LauncherItem> items=homePageItems.get(page);
+        int width=homePageWidth();
+
+        if(items.isEmpty()) {
+            TextView empty=text("NO APPS AVAILABLE",11,Ui.secondaryText(),true);
+            empty.setGravity(Gravity.CENTER);
+            empty.setLetterSpacing(0.05f);
+            GridLayout.LayoutParams emptyParams=new GridLayout.LayoutParams();
+            emptyParams.width=width;
+            emptyParams.height=Ui.dp(this,144);
+            pageGrid.addView(empty,emptyParams);
+        } else {
+            int cell=width/columns;
+            for(int index=0;index<items.size();index++) {
+                LauncherItem item=items.get(index);
+                LinearLayout cellView=makeCell(item,animate&&index<columns);
+                GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                params.width=cell;
+                params.height=Ui.dp(this,104);
+                pageGrid.addView(cellView,params);
+            }
+        }
+        homePageBuilt.set(page,true);
+    }
+
+    private void preloadNearbyHomePages(int center,boolean animateCenter) {
+        buildHomePage(center,animateCenter);
+        buildHomePage(center-1,false);
+        buildHomePage(center+1,false);
     }
 
     private int homePageWidth() {
@@ -602,7 +647,9 @@ public class MainActivity extends Activity {
     private void snapHomePage() {
         if(homePager==null||homeGrids.isEmpty()||homePagerDragging)return;
         int width=homePageWidth();
-        int target=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),homeGrids.size()-1))*width;
+        int settledPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),homeGrids.size()-1));
+        preloadNearbyHomePages(settledPage,false);
+        int target=settledPage*width;
         if(Math.abs(homePager.getScrollX()-target)>Ui.dp(this,2)) {
             showHomePage(target/width,true);
         }
@@ -614,6 +661,9 @@ public class MainActivity extends Activity {
         int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
         if(nextPage==currentHomePage)return;
         currentHomePage=nextPage;
+        // If a fast multi-page fling reaches an unprepared page, build it once
+        // as it becomes the active page; normal adjacent swipes are preloaded.
+        buildHomePage(currentHomePage,false);
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
             dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
