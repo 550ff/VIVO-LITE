@@ -30,7 +30,7 @@ public final class GlassDrawable extends Drawable {
         fill.setStyle(Paint.Style.FILL);
         edge.setStyle(Paint.Style.STROKE);
         edge.setStrokeWidth(1f);
-        edge.setColor(dark ? 0x50FFFFFF : 0xA8FFFFFF);
+        edge.setColor(dark ? 0x3FFFFFFF : 0x553A506B);
         sheen.setStyle(Paint.Style.FILL);
     }
 
@@ -41,7 +41,7 @@ public final class GlassDrawable extends Drawable {
         int bottom = blend(baseColor, dark ? Color.BLACK : 0xFFE7F0F8, dark ? 0.12f : 0.08f);
         fill.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom, top, bottom, Shader.TileMode.CLAMP));
         sheen.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                dark ? 0x1AFFFFFF : 0x36FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+                dark ? 0x12FFFFFF : 0x28FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
     }
 
     private static int blend(int from, int to, float amount) {
