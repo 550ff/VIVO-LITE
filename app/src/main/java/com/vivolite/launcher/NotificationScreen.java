@@ -19,11 +19,13 @@ import android.util.LruCache;
 public final class NotificationScreen extends LinearLayout {
     private final Context context;
     private final LinearLayout list;
+    private final boolean animations;
     private final LruCache<String,Drawable> appIcons=new LruCache<>(16);
 
     public NotificationScreen(Context context, boolean animations) {
         super(context);
         this.context=context;
+        this.animations=animations;
         LinearLayout panel=this;
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(Ui.dp(context,22),Ui.dp(context,24),Ui.dp(context,22),Ui.dp(context,18));
