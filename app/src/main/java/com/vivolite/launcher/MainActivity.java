@@ -751,6 +751,8 @@ public class MainActivity extends Activity {
             // the old page for a reversal and cancel a distant target's prefetch.
             homePagerScrolling=true;
             homePager.smoothScrollTo(targetPage*width,0);
+            // Also cover no-op smoothScrollTo calls, which may emit no scroll callback.
+            schedulePageSnap();
         } else {
             currentHomePage=targetPage;
             homePager.scrollTo(targetPage*width,0);
