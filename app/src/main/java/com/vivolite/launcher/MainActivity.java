@@ -575,7 +575,10 @@ public class MainActivity extends Activity {
     }
 
     private String batterySummary() {
-        Intent status=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        return batterySummary(registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
+    }
+
+    private String batterySummary(Intent status) {
         if(status==null)return "BATTERY UNAVAILABLE";
         int level=status.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
         int scale=status.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,-1);
@@ -587,7 +590,7 @@ public class MainActivity extends Activity {
 
     private final BroadcastReceiver batteryReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
-            if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary());
+            if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary(intent));
         }
     };
 
