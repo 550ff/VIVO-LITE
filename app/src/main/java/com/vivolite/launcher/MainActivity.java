@@ -539,7 +539,7 @@ public class MainActivity extends Activity {
         scrim.setOnClickListener(v->closeSmartEdge());
         ArrayList<LauncherItem> quickFavorites=new ArrayList<>();
         for(LauncherItem app:apps)if(favorites.contains(app.id)&&!hidden.contains(app.id)&&quickFavorites.size()<12)quickFavorites.add(app);
-        SmartEdgePanel panel=new SmartEdgePanel(this,quickFavorites,this::runSmartEdgeAction,()->closeSmartEdge());
+        SmartEdgePanel panel=new SmartEdgePanel(this,quickFavorites,this::runSmartEdgeAction,()->closeSmartEdge(),storage.animations());
         FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(Ui.dp(this,280),-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         overlay.addView(panel,panelParams);
         homeFrame.addView(overlay,new FrameLayout.LayoutParams(-1,-1));smartEdgeOverlay=overlay;
@@ -944,13 +944,13 @@ public class MainActivity extends Activity {
     }
 
     private void showNotifications() {
-        NotificationScreen screen=new NotificationScreen(this);
+        NotificationScreen screen=new NotificationScreen(this,storage.animations());
         showSurface(screen,SurfaceNavigation.NOTIFICATIONS);
         activeNotificationScreen=screen;
     }
 
     private void showControlCenter() {
-        ControlCenterScreen screen=new ControlCenterScreen(this);
+        ControlCenterScreen screen=new ControlCenterScreen(this,storage.animations());
         screen.setTorchState(isTorchOn());
         showSurface(screen,SurfaceNavigation.CONTROL);
     }
