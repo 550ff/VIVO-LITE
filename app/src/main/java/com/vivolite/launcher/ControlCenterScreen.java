@@ -79,6 +79,7 @@ public class ControlCenterScreen extends LinearLayout {
         flashParams.topMargin=Ui.dp(context,9);
         content.addView(flashRow,flashParams);
         flashRow.setOnClickListener(v->((MainActivity)context).toggleTorch());
+        Ui.attachTouchFeedback(flashRow,true);
 
         TextView displayLabel=sectionLabel(context,"DISPLAY");
         LinearLayout.LayoutParams displayParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,28));
@@ -178,6 +179,8 @@ public class ControlCenterScreen extends LinearLayout {
         content.addView(info,infoParams);
         settingsShortcut.setOnClickListener(v->open(Settings.ACTION_SETTINGS));
         info.setOnClickListener(v->open(Settings.ACTION_BATTERY_SAVER_SETTINGS));
+        Ui.attachTouchFeedback(settingsShortcut,true);
+        Ui.attachTouchFeedback(info,true);
 
         TextView notifications=text(context,"VIEW NOTIFICATIONS",10,Ui.primaryText(),true);
         notifications.setGravity(Gravity.CENTER);
@@ -187,6 +190,7 @@ public class ControlCenterScreen extends LinearLayout {
         notificationParams.topMargin=Ui.dp(context,9);
         content.addView(notifications,notificationParams);
         notifications.setOnClickListener(v->((MainActivity)context).navigateToSurface(SurfaceNavigation.NOTIFICATIONS));
+        Ui.attachTouchFeedback(notifications,true);
 
         LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,58));
         navigationParams.topMargin=Ui.dp(context,9);
@@ -234,7 +238,8 @@ public class ControlCenterScreen extends LinearLayout {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);
         p.setMargins(Ui.dp(c,4),0,Ui.dp(c,4),0);
         row.addView(tile,p);
-        tile.setOnClickListener(v->{Ui.press(tile,true);action.run();});
+        tile.setOnClickListener(v->action.run());
+        Ui.attachTouchFeedback(tile,true);
         tile.setOnLongClickListener(v->{
             if(label.equals("Wi-Fi"))open(Settings.ACTION_WIFI_SETTINGS);
             else if(label.equals("Bluetooth"))open(Settings.ACTION_BLUETOOTH_SETTINGS);
