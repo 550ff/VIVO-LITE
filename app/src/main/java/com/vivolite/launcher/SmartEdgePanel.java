@@ -11,9 +11,11 @@ import java.util.List;
 /** A launcher-owned edge drawer for direct, local quick actions. */
 final class SmartEdgePanel extends LinearLayout {
     interface Listener { void onAction(String action); }
+    private final boolean animations;
 
     SmartEdgePanel(Context context,List<LauncherItem> favorites,Listener listener,Runnable close,boolean animations) {
         super(context);
+        this.animations=animations;
         setOrientation(VERTICAL);
         setPadding(Ui.dp(context,18),Ui.dp(context,24),Ui.dp(context,14),Ui.dp(context,18));
         setBackground(Ui.panel(context,Ui.GLASS,26));
