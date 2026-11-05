@@ -11,7 +11,6 @@ import android.view.View;
 /** Shared, lightweight navigation for the launcher-owned full-screen surfaces. */
 final class SurfaceNavigation extends LinearLayout {
     static final int HOME = 0;
-    static final int LIBRARY = 1;
     static final int NOTIFICATIONS = 2;
     static final int CONTROL = 3;
     static final int SETTINGS = 4;
