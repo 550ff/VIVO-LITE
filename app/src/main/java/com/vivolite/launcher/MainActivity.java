@@ -259,6 +259,7 @@ public class MainActivity extends Activity {
         root.addView(homePager,new LinearLayout.LayoutParams(-1,0,1));
         pageDots=new LinearLayout(this);pageDots.setGravity(Gravity.CENTER);
         root.addView(pageDots,new LinearLayout.LayoutParams(-1,Ui.dp(this,20)));
+        homePager.getViewTreeObserver().addOnScrollChangedListener(this::updatePageIndicator);
 
         if(storage.showDock()) {
             dock=new LinearLayout(this);
@@ -594,7 +595,9 @@ public class MainActivity extends Activity {
     private void updatePageIndicator() {
         if(pageDots==null||homePager==null)return;
         int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
-        currentHomePage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
+        int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
+        if(nextPage==currentHomePage)return;
+        currentHomePage=nextPage;
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
             dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
@@ -1005,6 +1008,7 @@ public class MainActivity extends Activity {
             FrameLayout.LayoutParams moreParams=new FrameLayout.LayoutParams(Ui.dp(this,40),Ui.dp(this,36),Gravity.RIGHT|Gravity.TOP);
             card.addView(more,moreParams);
             more.setOnClickListener(v->showWidgetMenu(id,info));
+            Ui.attachTouchFeedback(more,storage.animations());
             LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(-1,height);
             cardParams.bottomMargin=Ui.dp(this,8);widgetShelf.addView(card,cardParams);
         }
