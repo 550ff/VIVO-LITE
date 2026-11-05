@@ -1017,7 +1017,6 @@ public class MainActivity extends Activity {
         widgetsListening=false;
         if(batteryReceiverRegistered)try {unregisterReceiver(batteryReceiver);}catch(Exception ignored){}
         batteryReceiverRegistered=false;
-        if(torchController!=null)torchController.turnOff();
         super.onStop();
     }
 
