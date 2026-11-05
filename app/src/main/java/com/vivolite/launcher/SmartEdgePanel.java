@@ -24,6 +24,7 @@ final class SmartEdgePanel extends LinearLayout {
         header.addView(labels,new LayoutParams(0,Ui.dp(context,46),1));
         TextView closeButton=text(context,"×",24,Ui.primaryText(),false);closeButton.setGravity(Gravity.CENTER);
         header.addView(closeButton,new LayoutParams(Ui.dp(context,42),Ui.dp(context,42)));closeButton.setOnClickListener(v->close.run());
+        Ui.attachTouchFeedback(closeButton,true);
         addView(header,new LayoutParams(-1,Ui.dp(context,48)));
         TextView toolsLabel=text(context,"TOOLS",9,Ui.secondaryText(),true);toolsLabel.setLetterSpacing(0.12f);
         LayoutParams section=new LayoutParams(-1,Ui.dp(context,28));section.topMargin=Ui.dp(context,12);addView(toolsLabel,section);
@@ -39,6 +40,7 @@ final class SmartEdgePanel extends LinearLayout {
             row.setPadding(Ui.dp(context,12),0,Ui.dp(context,8),0);row.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,14));
             LayoutParams p=new LayoutParams(-1,Ui.dp(context,44));p.bottomMargin=Ui.dp(context,6);appRows.addView(row,p);
             row.setOnClickListener(v->listener.onAction("app:"+app.id));
+            Ui.attachTouchFeedback(row,true);
         }
         if(favorites.isEmpty()) {
             TextView empty=text(context,"Favourite apps appear here after you add them from the home screen.",11,Ui.secondaryText(),false);
@@ -56,6 +58,7 @@ final class SmartEdgePanel extends LinearLayout {
         TextView name=text(context,label,12,Ui.primaryText(),false);row.addView(name,new LayoutParams(0,Ui.dp(context,44),1));
         LayoutParams p=new LayoutParams(-1,Ui.dp(context,44));p.bottomMargin=Ui.dp(context,6);addView(row,p);
         row.setOnClickListener(v->listener.onAction(action));
+        Ui.attachTouchFeedback(row,true);
     }
 
     private TextView text(Context context,String value,int size,int color,boolean bold) {
