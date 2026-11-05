@@ -93,6 +93,8 @@ public class MainActivity extends Activity {
     private final Runnable pageSnap = this::snapHomePage;
     private boolean homePagerDragging = false;
     private int currentHomePage = 0;
+    private int lastHomePagerScrollX = 0;
+    private int homePageBuildDirection = 1;
     private static final int WIDGET_HOST_ID=0x564C;
     private static final int REQUEST_WIDGET_PICK=4100;
     private static final int REQUEST_WIDGET_CONFIGURE=4101;
@@ -577,8 +579,10 @@ public class MainActivity extends Activity {
         preloadNearbyHomePages(currentHomePage,animate&&query.isEmpty());
         homePager.post(()->{
             homePager.scrollTo(currentHomePage*width,0);
+            lastHomePagerScrollX=homePager.getScrollX();
+            homePageBuildDirection=1;
             updatePageIndicator();
-            preloadNearbyHomePages(currentHomePage,false);
+            preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
         });
     }
 
@@ -605,6 +609,14 @@ public class MainActivity extends Activity {
         if(page<0||page>=homeGrids.size()||homePageBuilt.get(page))return;
         if(homePageBuildQueued.get(page)) {
             if(animate)homePageBuildAnimate.set(page,true);
+            // A page that has just become visible must jump ahead of stale
+            // neighbour-prefetch work left over from the previous swipe.
+            int queuedIndex=homePageBuildQueue.indexOf(page);
+            if(queuedIndex>0) {
+                homePageBuildQueue.remove(queuedIndex);
+                homePageBuildQueue.add(0,page);
+            }
+            scheduleHomePageBuildFrame();
             return;
         }
         homePageBuildQueued.set(page,true);
@@ -698,9 +710,21 @@ public class MainActivity extends Activity {
     }
 
     private void preloadNearbyHomePages(int center,boolean animateCenter) {
+        preloadNearbyHomePages(center,animateCenter,homePageBuildDirection);
+    }
+
+    private void preloadNearbyHomePages(int center,boolean animateCenter,int direction) {
+        // Always build the page the user can see first, then prefetch in the
+        // direction of travel. This prevents reverse swipes waiting behind
+        // a page that is no longer relevant.
         buildHomePage(center,animateCenter);
-        buildHomePage(center+1,false);
-        buildHomePage(center-1,false);
+        if(direction<0) {
+            buildHomePage(center-1,false);
+            buildHomePage(center+1,false);
+        } else {
+            buildHomePage(center+1,false);
+            buildHomePage(center-1,false);
+        }
     }
 
     private int homePageWidth() {
@@ -709,9 +733,11 @@ public class MainActivity extends Activity {
 
     private void showHomePage(int page,boolean smooth) {
         int width=homePageWidth();
+        int previousPage=currentHomePage;
         currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
+        if(currentHomePage!=previousPage)homePageBuildDirection=currentHomePage>previousPage?1:-1;
         if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
-        preloadNearbyHomePages(currentHomePage,false);
+        preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
         if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
         updatePageIndicator();
     }
@@ -744,6 +770,11 @@ public class MainActivity extends Activity {
     };
 
     private void onHomePagerScrolled() {
+        int scrollX=homePager.getScrollX();
+        if(scrollX!=lastHomePagerScrollX) {
+            homePageBuildDirection=scrollX>lastHomePagerScrollX?1:-1;
+            lastHomePagerScrollX=scrollX;
+        }
         updatePageIndicator();
         // A fling keeps producing scroll callbacks after ACTION_UP. Debounce from
         // the final scroll frame instead of snapping 90ms after the finger lifts.
@@ -776,7 +807,7 @@ public class MainActivity extends Activity {
         // Keep the live hierarchy bounded and have the next page ready before
         // the next swipe settles.
         trimDistantHomePages(currentHomePage);
-        preloadNearbyHomePages(currentHomePage,false);
+        preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
         for(int i=0;i<pageDots.getChildCount();i++) {
             TextView dot=(TextView)pageDots.getChildAt(i);
             dot.setTextColor(i==currentHomePage?Ui.ACCENT:Ui.secondaryText());
