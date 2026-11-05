@@ -19,7 +19,7 @@ public final class LauncherWallpaperDrawable extends Drawable {
 
     public LauncherWallpaperDrawable(int accent, int preset) {
         this.accent = accent;
-        this.preset = preset;
+        this.preset = Math.max(0, Math.min(2, preset));
         base.setStyle(Paint.Style.FILL);
         glow.setStyle(Paint.Style.FILL);
     }
@@ -30,12 +30,12 @@ public final class LauncherWallpaperDrawable extends Drawable {
         int middle = preset == 1 ? 0xFF101F2A : (preset == 2 ? 0xFF1A1525 : 0xFF151C2A);
         base.setShader(new android.graphics.LinearGradient(bounds.left, bounds.top, bounds.right, bounds.bottom,
                 new int[]{top, middle, 0xFF080C14}, new float[]{0f, 0.52f, 1f}, Shader.TileMode.CLAMP));
-        int neutral = Color.rgb(220,224,232);
-        int glowColor = (0x22 << 24) | (neutral & 0x00FFFFFF);
-        int softColor = (0x0C << 24) | (neutral & 0x00FFFFFF);
+        int accentGlow = Color.argb(0x32, Color.red(accent), Color.green(accent), Color.blue(accent));
+        int softGlow = Color.argb(0x10, Color.red(accent), Color.green(accent), Color.blue(accent));
         glow.setShader(new RadialGradient(bounds.left + bounds.width() * 0.78f,
-                bounds.top + bounds.height() * 0.22f, Math.max(bounds.width(), bounds.height()) * 0.82f,
-                new int[]{glowColor, softColor, Color.TRANSPARENT}, new float[]{0f, 0.48f, 1f}, Shader.TileMode.CLAMP));
+                bounds.top + bounds.height() * 0.22f, Math.max(1f, Math.max(bounds.width(), bounds.height()) * 0.82f),
+                new int[]{accentGlow, softGlow, Color.TRANSPARENT},
+                new float[]{0f, 0.48f, 1f}, Shader.TileMode.CLAMP));
     }
 
     @Override public void draw(Canvas canvas) {
