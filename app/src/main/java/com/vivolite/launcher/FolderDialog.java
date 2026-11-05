@@ -22,7 +22,7 @@ public class FolderDialog extends Dialog {
     }
 
     public FolderDialog(Context context, LauncherItem folder, List<LauncherItem> apps,
-                        boolean animations, Listener listener) {
+                        IconCache cache, boolean animations, Listener listener) {
         super(context);
         LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
