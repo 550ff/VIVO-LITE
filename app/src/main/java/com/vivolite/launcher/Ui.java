@@ -11,7 +11,7 @@ public final class Ui {
     public static final int MUTED = Color.rgb(183,194,210);
     public static final int INK = Color.rgb(37,48,66);
     public static final int MUTED_INK = Color.rgb(101,115,134);
-    public static final int ACCENT_BLUE = Color.rgb(232,235,240);
+    public static final int ACCENT_BLUE = 0xFF89AEFF;
     public static int ACCENT = ACCENT_BLUE;
     public static int GLASS = Color.argb(210, 31,34,40);
     public static int GLASS_LIGHT = Color.argb(225, 48,51,58);
@@ -28,8 +28,8 @@ public final class Ui {
 
     public static void configure(boolean useDarkGlass, int accent, int iconSizeDp) {
         darkGlass = useDarkGlass;
-        ACCENT = ACCENT_BLUE;
-        ICON_DP = iconSizeDp;
+        ACCENT = accent;
+        ICON_DP = Math.max(36, Math.min(64, iconSizeDp));
         if (darkGlass) {
             GLASS = Color.argb(224, 20,21,24);
             GLASS_LIGHT = Color.argb(232, 43,45,50);
