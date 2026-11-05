@@ -1,4 +1,4 @@
-# VIVO LITE 1.5.1 — Final build candidate
+# VIVO LITE 1.5.2 — Final build candidate
 
 VIVO LITE is a native, lightweight Android launcher tuned for the Vivo Y21L (Android 5.1.1 / API 22). It replaces the home-screen experience; it does **not** replace Android or install a custom ROM.
 
@@ -18,6 +18,8 @@ VIVO LITE is a native, lightweight Android launcher tuned for the Vivo Y21L (And
 - Only the current page and immediate neighbours stay populated; distant page cells are released and rebuilt when they become relevant
 - A shared motion engine aligns press, release and screen-entry durations to the display refresh interval, reuses easing curves and limits motion to translation/scale
 - Home-page build scheduling prioritizes the newly visible page and prefetches the next page in the actual swipe direction, so reverse swipes are not queued behind stale forward-prefetch work
+- Page-cell construction pauses during finger movement and fling settling, then resumes after the page lands
+- Distant page hierarchies are trimmed only after scrolling settles, avoiding view removal and layout work during active swipes
 - Programmatic page jumps keep the current page tied to the real scroll position, preventing stale-position callbacks from cancelling destination-page preparation
 - Local quick note and launcher preferences
 - Optional notification view when Android permits notification-listener access
@@ -39,7 +41,7 @@ Smart Edge has been removed.
 
 1. Open **Actions** in this repository.
 2. Run **Build VIVO LITE APK** on branch `v1.4-premium-experience`, or push a commit to that branch.
-3. Download the `VIVO-LITE-V1.5.1-final-debug` artifact.
+3. Download the `VIVO-LITE-V1.5.2-final-debug` artifact.
 4. Extract `app-debug.apk` and install it on the Vivo Y21L.
 5. Open Android's Home app settings and select **VIVO LITE** as the default Home app.
 
