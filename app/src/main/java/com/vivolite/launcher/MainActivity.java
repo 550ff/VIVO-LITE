@@ -733,18 +733,19 @@ public class MainActivity extends Activity {
 
     private void showHomePage(int page,boolean smooth) {
         int width=homePageWidth();
+        int targetPage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
         int previousPage=currentHomePage;
-        currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
-        if(currentHomePage!=previousPage)homePageBuildDirection=currentHomePage>previousPage?1:-1;
-        if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
-        preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
+        if(targetPage!=previousPage)homePageBuildDirection=targetPage>previousPage?1:-1;
+        if(search==null||search.length()==0)storage.setHomePage(targetPage);
+        preloadNearbyHomePages(targetPage,false,homePageBuildDirection);
         if(smooth) {
-            // Keep the requested destination highlighted while the scroller is
-            // travelling; reading the old scrollX here would revert the target.
-            updatePageDots(currentHomePage);
-            homePager.smoothScrollTo(currentHomePage*width,0);
+            // Keep currentHomePage tied to the actual scroll position. Setting it
+            // to the destination early makes the first scroll callback mistake
+            // the old page for a reversal and cancel a distant target's prefetch.
+            homePager.smoothScrollTo(targetPage*width,0);
         } else {
-            homePager.scrollTo(currentHomePage*width,0);
+            currentHomePage=targetPage;
+            homePager.scrollTo(targetPage*width,0);
             lastHomePagerScrollX=homePager.getScrollX();
             updatePageIndicator();
         }
