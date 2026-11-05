@@ -21,7 +21,7 @@ public final class NotificationScreen extends LinearLayout {
     private final LinearLayout list;
     private final LruCache<String,Drawable> appIcons=new LruCache<>(16);
 
-    public NotificationScreen(Context context) {
+    public NotificationScreen(Context context, boolean animations) {
         super(context);
         this.context=context;
         LinearLayout panel=this;
@@ -32,7 +32,7 @@ public final class NotificationScreen extends LinearLayout {
         TextView back=text("‹",30,Ui.primaryText(),false);back.setGravity(Gravity.CENTER);
         header.addView(back,new LinearLayout.LayoutParams(Ui.dp(context,48),Ui.dp(context,44)));
         back.setOnClickListener(v->((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME));
-        Ui.attachTouchFeedback(back,true);
+        Ui.attachTouchFeedback(back,animations);
         TextView heading=text("NOTIFICATIONS",13,Ui.primaryText(),true);heading.setLetterSpacing(0.12f);
         header.addView(heading,new LinearLayout.LayoutParams(0,Ui.dp(context,44),1));panel.addView(header);
         ScrollView scroll=new ScrollView(context);
@@ -53,7 +53,7 @@ public final class NotificationScreen extends LinearLayout {
             else android.widget.Toast.makeText(context,"Notifications could not be cleared",android.widget.Toast.LENGTH_SHORT).show();
             refresh();
         });
-        Ui.attachTouchFeedback(clear,true);
+        Ui.attachTouchFeedback(clear,animations);
         LinearLayout.LayoutParams navigationParams=new LinearLayout.LayoutParams(-1,Ui.dp(context,58));
         navigationParams.topMargin=Ui.dp(context,10);
         panel.addView(new SurfaceNavigation(context,SurfaceNavigation.NOTIFICATIONS),navigationParams);
@@ -77,7 +77,7 @@ public final class NotificationScreen extends LinearLayout {
             enable.setBackground(Ui.panel(context,Ui.GLASS_LIGHT,16));
             list.addView(enable,new LinearLayout.LayoutParams(-1,Ui.dp(context,44)));
             enable.setOnClickListener(v->{try{context.startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception ignored){}});
-            Ui.attachTouchFeedback(enable,true);
+            Ui.attachTouchFeedback(enable,animations);
             return;
         }
         if(!LauncherNotificationService.isConnected()) {
@@ -141,7 +141,7 @@ public final class NotificationScreen extends LinearLayout {
             catch(Exception ignored) { }
             ((MainActivity)context).navigateToSurface(SurfaceNavigation.HOME);
         });
-        Ui.attachTouchFeedback(card,true);
+        Ui.attachTouchFeedback(card,animations);
         card.setOnLongClickListener(v->{
             if(LauncherNotificationService.dismiss(entry.key))refresh();
             else android.widget.Toast.makeText(context,"Notification is no longer available",android.widget.Toast.LENGTH_SHORT).show();
