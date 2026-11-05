@@ -367,16 +367,22 @@ public class MainActivity extends Activity {
                 String cls = r.activityInfo.name;
                 String id = pkg + "/" + cls;
                 if (!seen.add(id)) continue;
-                CharSequence label = r.loadLabel(pm);
-                LauncherItem item = LauncherItem.app(
-                    id, label == null ? cls.substring(cls.lastIndexOf('.') + 1) : String.valueOf(label),
-                    pkg, cls
-                );
-                loadedApps.add(item);
-                Drawable drawable = loadedPack.icon(pkg, cls);
-                boolean monochrome = drawable == null;
-                if (monochrome) drawable = r.loadIcon(pm);
-                loadedDrawables.put(id, iconCache.get(id, drawable, monochrome));
+                try {
+                    CharSequence label = r.loadLabel(pm);
+                    LauncherItem item = LauncherItem.app(
+                        id, label == null ? cls.substring(cls.lastIndexOf('.') + 1) : String.valueOf(label),
+                        pkg, cls
+                    );
+                    Drawable drawable = loadedPack.icon(pkg, cls);
+                    boolean monochrome = drawable == null;
+                    if (monochrome) drawable = r.loadIcon(pm);
+                    Drawable cachedIcon = iconCache.get(id, drawable, monochrome);
+                    loadedApps.add(item);
+                    loadedDrawables.put(id, cachedIcon);
+                } catch (RuntimeException unavailable) {
+                    // An app can be removed or updated while the package scan is running.
+                    // Skip only that stale entry instead of aborting the entire library refresh.
+                }
             }
 
             Collections.sort(loadedApps, new Comparator<LauncherItem>() {
