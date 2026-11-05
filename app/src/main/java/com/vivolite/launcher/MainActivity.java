@@ -525,7 +525,7 @@ public class MainActivity extends Activity {
     }
 
     private void showHomePage(int page,boolean smooth) {
-        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int width=homePageWidth();
         currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
         if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
         if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
@@ -600,7 +600,7 @@ public class MainActivity extends Activity {
 
     private void updatePageIndicator() {
         if(pageDots==null||homePager==null)return;
-        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
+        int width=homePageWidth();
         int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
         if(nextPage==currentHomePage)return;
         currentHomePage=nextPage;
