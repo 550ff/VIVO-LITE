@@ -76,7 +76,6 @@ final class SurfaceNavigation extends LinearLayout {
         params.setMargins(Ui.dp(context, 2), 0, Ui.dp(context, 2), 0);
         addView(item, params);
         item.setOnClickListener(v -> {
-            Ui.press(item, true);
             if (context instanceof MainActivity) {
                 ((MainActivity) context).navigateToSurface(destination);
             }
