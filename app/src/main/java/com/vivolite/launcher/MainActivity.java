@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
     // Keep page shells cheap; materialize app cells only for the visible neighbourhood.
     private final ArrayList<List<LauncherItem>> homePageItems = new ArrayList<>();
     private final ArrayList<Boolean> homePageBuilt = new ArrayList<>();
+    private String homeEmptyMessage = "NO APPS AVAILABLE";
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
     private final Runnable pageSnap = this::snapHomePage;
     private boolean homePagerDragging = false;
@@ -518,6 +519,7 @@ public class MainActivity extends Activity {
         int pageCapacity=columns*4;
         int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
         currentHomePage=Math.min(currentHomePage,pageCount-1);
+        homeEmptyMessage=query.isEmpty()?"NO APPS AVAILABLE":"NO MATCHES  ·  TRY ANOTHER NAME";
 
         for(int page=0;page<pageCount;page++) {
             ScrollView scroll=new ScrollView(this);
@@ -554,8 +556,11 @@ public class MainActivity extends Activity {
         // Materialize only the current page and its immediate neighbours. The
         // remaining page shells preserve swipe geometry without retaining cell views.
         preloadNearbyHomePages(currentHomePage,animate&&query.isEmpty());
-        homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
-        updatePageIndicator();
+        homePager.post(()->{
+            homePager.scrollTo(currentHomePage*width,0);
+            updatePageIndicator();
+            preloadNearbyHomePages(currentHomePage,false);
+        });
     }
 
     private void buildHomePage(int page,boolean animate) {
@@ -565,7 +570,7 @@ public class MainActivity extends Activity {
         int width=homePageWidth();
 
         if(items.isEmpty()) {
-            TextView empty=text("NO APPS AVAILABLE",11,Ui.secondaryText(),true);
+            TextView empty=text(homeEmptyMessage,11,Ui.secondaryText(),true);
             empty.setGravity(Gravity.CENTER);
             empty.setLetterSpacing(0.05f);
             GridLayout.LayoutParams emptyParams=new GridLayout.LayoutParams();
