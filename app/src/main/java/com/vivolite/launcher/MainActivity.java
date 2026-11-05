@@ -31,6 +31,7 @@ import android.view.ViewGroup;
 import android.view.DragEvent;
 import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
@@ -225,6 +226,15 @@ public class MainActivity extends Activity {
 
         search = new EditText(this);
         search.setSingleLine(true); search.setTextSize(13); search.setTextColor(Ui.primaryText());
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        search.setOnEditorActionListener((view,actionId,event)->{
+            if(actionId==EditorInfo.IME_ACTION_SEARCH||actionId==EditorInfo.IME_ACTION_DONE) {
+                try { ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(search.getWindowToken(),0); }
+                catch(Exception ignored) {}
+                return true;
+            }
+            return false;
+        });
         search.setHintTextColor(Ui.secondaryText()); search.setHint("⌕   Search your apps");
         search.setPadding(Ui.dp(this,16),0,Ui.dp(this,16),0);
         search.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,22));
@@ -492,11 +502,20 @@ public class MainActivity extends Activity {
             if(grid==null)grid=pageGrid;
             scroll.addView(pageGrid,new ScrollView.LayoutParams(-1,-2));
             int start=page*pageCapacity,end=Math.min(visible.size(),start+pageCapacity);
-            for(int index=start;index<end;index++) {
-                LauncherItem item=visible.get(index);
-                LinearLayout cellView=makeCell(item,animate&&query.isEmpty()&&index-start<columns);
-                GridLayout.LayoutParams params=new GridLayout.LayoutParams();
-                params.width=cell;params.height=Ui.dp(this,104);pageGrid.addView(cellView,params);
+            if(visible.isEmpty()) {
+                TextView empty=text(query.isEmpty()?"NO APPS AVAILABLE":"NO MATCHES  ·  TRY ANOTHER NAME",11,Ui.secondaryText(),true);
+                empty.setGravity(Gravity.CENTER);
+                empty.setLetterSpacing(0.05f);
+                GridLayout.LayoutParams emptyParams=new GridLayout.LayoutParams();
+                emptyParams.width=width;emptyParams.height=Ui.dp(this,144);
+                pageGrid.addView(empty,emptyParams);
+            } else {
+                for(int index=start;index<end;index++) {
+                    LauncherItem item=visible.get(index);
+                    LinearLayout cellView=makeCell(item,animate&&query.isEmpty()&&index-start<columns);
+                    GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                    params.width=cell;params.height=Ui.dp(this,104);pageGrid.addView(cellView,params);
+                }
             }
             pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
             final int targetPage=page;
@@ -506,7 +525,7 @@ public class MainActivity extends Activity {
             dot.setOnClickListener(v->showHomePage(targetPage,true));
             Ui.attachTouchFeedback(dot,storage.animations());
         }
-        if(count!=null)count.setText(String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
+        if(count!=null)count.setText(visible.isEmpty()?(query.isEmpty()?"0 ITEMS":"NO MATCHES"):String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
         homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
         updatePageIndicator();
