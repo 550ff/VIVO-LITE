@@ -16,8 +16,9 @@ final class SurfaceNavigation extends LinearLayout {
     static final int CONTROL = 3;
     static final int SETTINGS = 4;
 
-    private static final String[] LABELS = {"HOME", "APPS", "ALERTS", "CONTROL", "STYLE"};
-    private static final String[] GLYPHS = {"⌂", "▦", "◌", "◉", "⚙"};
+    private static final int[] DESTINATIONS = {HOME, NOTIFICATIONS, CONTROL, SETTINGS};
+    private static final String[] LABELS = {"HOME", "ALERTS", "CONTROL", "STYLE"};
+    private static final String[] GLYPHS = {"⌂", "◌", "◉", "⚙"};
 
     SurfaceNavigation(Context context, int selected) {
         super(context);
@@ -26,10 +27,10 @@ final class SurfaceNavigation extends LinearLayout {
         setPadding(Ui.dp(context, 6), Ui.dp(context, 6), Ui.dp(context, 6), Ui.dp(context, 6));
         setBackground(Ui.panel(context, Ui.GLASS_LIGHT, 24));
         setElevation(Ui.dp(context, 5));
-        for (int i = 0; i < LABELS.length; i++) addItem(context, i, selected);
+        for (int i = 0; i < LABELS.length; i++) addItem(context, DESTINATIONS[i], i, selected);
     }
 
-    private void addItem(Context context, int destination, int selected) {
+    private void addItem(Context context, int destination, int visualIndex, int selected) {
         LinearLayout item = new LinearLayout(context);
         item.setOrientation(VERTICAL);
         item.setGravity(Gravity.CENTER);
@@ -39,7 +40,7 @@ final class SurfaceNavigation extends LinearLayout {
         boolean active = destination == selected;
 
         TextView glyph = new TextView(context);
-        glyph.setText(GLYPHS[destination]);
+        glyph.setText(GLYPHS[visualIndex]);
         glyph.setTextSize(18);
         glyph.setTextColor(active ? Ui.ACCENT : Ui.secondaryText());
         glyph.setGravity(Gravity.CENTER);
