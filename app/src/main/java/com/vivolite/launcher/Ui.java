@@ -2,6 +2,7 @@ package com.vivolite.launcher;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.MotionEvent;
@@ -19,8 +20,11 @@ public final class Ui {
     public static final int BLACK = Color.rgb(6, 8, 12);
     public static int ICON_DP = 46;
     private static boolean darkGlass = true;
+    private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
     private Ui() {}
+
+    public static Typeface mediumTypeface() { return MEDIUM; }
 
     public static int dp(Context c, float value) {
         return (int)(value * c.getResources().getDisplayMetrics().density + 0.5f);
