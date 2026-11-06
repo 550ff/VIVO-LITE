@@ -15,8 +15,8 @@ import android.view.animation.PathInterpolator;
  * Shared low-overhead motion profile for the launcher.
  *
  * Durations are expressed in display frames rather than arbitrary milliseconds.
- * Only compositor-friendly translation and scale properties are used; no
- * per-frame callbacks, alpha fades, shadows, or temporary hardware layers.
+ * Motion uses compositor-friendly view properties and short-lived hardware layers
+ * only where a composed surface benefits from cached rendering.
  */
 public final class LauncherMotionEngine {
     private static final Interpolator PRESS_IN =
