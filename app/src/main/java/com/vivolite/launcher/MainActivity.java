@@ -207,12 +207,65 @@ public class MainActivity extends Activity {
         Ui.attachTouchFeedback(addWidget,storage.animations());
         root.addView(top);
 
+        // A compact lock-screen-inspired clock card gives the home screen a clear
+        // visual anchor without consuming the space needed by the app grid.
+        FrameLayout clockCard = new FrameLayout(this);
+        clockCard.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,26));
+        LinearLayout clockRow = new LinearLayout(this);
+        clockRow.setGravity(Gravity.CENTER_VERTICAL);
+        clockRow.setPadding(Ui.dp(this,17),Ui.dp(this,8),Ui.dp(this,16),Ui.dp(this,8));
+
+        LinearLayout timeBlock = new LinearLayout(this);
+        timeBlock.setOrientation(LinearLayout.VERTICAL);
+        timeBlock.setGravity(Gravity.CENTER_VERTICAL);
+        TextView timeCaption = text("LOCAL TIME",8,Ui.ACCENT,true);
+        timeCaption.setLetterSpacing(0.16f);
+        timeBlock.addView(timeCaption,new LinearLayout.LayoutParams(-1,Ui.dp(this,15)));
+
         clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
-        clock.setGravity(Gravity.CENTER);
-        clock.setTextSize(60); clock.setTextColor(Ui.WHITE);
+        clock.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);
+        clock.setTextSize(52); clock.setTextColor(Ui.WHITE);
         clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
-        clock.setLetterSpacing(0.015f);
+        clock.setLetterSpacing(0.005f);
+        timeBlock.addView(clock,new LinearLayout.LayoutParams(-1,Ui.dp(this,66)));
+        clockRow.addView(timeBlock,new LinearLayout.LayoutParams(0,-2,1f));
+
+        View clockDivider = new View(this);
+        clockDivider.setBackgroundColor(Ui.subtleBorder());
+        LinearLayout.LayoutParams dividerParams=new LinearLayout.LayoutParams(Ui.dp(this,1),Ui.dp(this,48));
+        dividerParams.leftMargin=Ui.dp(this,8);
+        dividerParams.rightMargin=Ui.dp(this,13);
+        clockRow.addView(clockDivider,dividerParams);
+
+        LinearLayout dateBlock = new LinearLayout(this);
+        dateBlock.setOrientation(LinearLayout.VERTICAL);
+        dateBlock.setGravity(Gravity.CENTER);
+        TextClock weekdayClock = new TextClock(this);
+        weekdayClock.setFormat24Hour("EEE"); weekdayClock.setFormat12Hour("EEE");
+        weekdayClock.setGravity(Gravity.CENTER);
+        weekdayClock.setTextSize(9); weekdayClock.setTextColor(Ui.secondaryText());
+        weekdayClock.setTypeface(Ui.mediumTypeface());
+        weekdayClock.setLetterSpacing(0.12f);
+        dateBlock.addView(weekdayClock,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,16)));
+
+        TextClock dayNumber = new TextClock(this);
+        dayNumber.setFormat24Hour("dd"); dayNumber.setFormat12Hour("dd");
+        dayNumber.setGravity(Gravity.CENTER);
+        dayNumber.setTextSize(27); dayNumber.setTextColor(Ui.primaryText());
+        dayNumber.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        dateBlock.addView(dayNumber,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,34)));
+
+        date = new TextClock(this);
+        date.setFormat24Hour("MMM"); date.setFormat12Hour("MMM");
+        date.setGravity(Gravity.CENTER);
+        date.setTextSize(9); date.setTextColor(Ui.secondaryText());
+        date.setLetterSpacing(0.12f);
+        date.setTypeface(Ui.mediumTypeface());
+        dateBlock.addView(date,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,16)));
+        clockRow.addView(dateBlock,new LinearLayout.LayoutParams(Ui.dp(this,64),-2));
+        clockCard.addView(clockRow,new FrameLayout.LayoutParams(-1,-1));
+
         final float[] clockTouchY={0f};
         clock.setOnTouchListener((view,event)->{
             if(event.getAction()==MotionEvent.ACTION_DOWN){clockTouchY[0]=event.getY();return true;}
@@ -226,18 +279,11 @@ public class MainActivity extends Activity {
             }
             return true;
         });
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,70));
-        cp.topMargin=Ui.dp(this,11); root.addView(clock,cp);
-
-        date = new TextClock(this);
-        date.setGravity(Gravity.CENTER);
-        date.setFormat24Hour("EEEE  ·  d MMMM"); date.setFormat12Hour("EEEE  ·  d MMMM");
-        date.setTextSize(12); date.setTextColor(Ui.secondaryText());
-        date.setLetterSpacing(0.035f);
-        date.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
-        dp.bottomMargin=Ui.dp(this,16); root.addView(date,dp);
-        if(!storage.showClock()){clock.setVisibility(View.GONE);date.setVisibility(View.GONE);}
+        LinearLayout.LayoutParams clockCardParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,96));
+        clockCardParams.topMargin=Ui.dp(this,12);
+        clockCardParams.bottomMargin=Ui.dp(this,10);
+        root.addView(clockCard,clockCardParams);
+        if(!storage.showClock()){clockCard.setVisibility(View.GONE);}
 
         pulseCapsule=text("PULSE  ·  "+batterySummary(),9,Ui.primaryText(),true);
         pulseCapsule.setGravity(Gravity.CENTER);
