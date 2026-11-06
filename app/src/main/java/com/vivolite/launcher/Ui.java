@@ -2,28 +2,32 @@ package com.vivolite.launcher;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.view.View;
-import android.view.animation.DecelerateInterpolator;
+import android.view.MotionEvent;
 
 public final class Ui {
-    public static final int WHITE = Color.rgb(247,249,253);
-    public static final int MUTED = Color.rgb(183,194,210);
-    public static final int INK = Color.rgb(37,48,66);
-    public static final int MUTED_INK = Color.rgb(101,115,134);
-    public static final int ACCENT_BLUE = 0xFF89AEFF;
+    public static final int WHITE = Color.rgb(245, 247, 251);
+    public static final int MUTED = Color.rgb(157, 170, 190);
+    public static final int INK = Color.rgb(25, 35, 50);
+    public static final int MUTED_INK = Color.rgb(93, 109, 131);
+    public static final int ACCENT_BLUE = 0xFF91B4FF;
     public static int ACCENT = ACCENT_BLUE;
-    public static int GLASS = Color.argb(210, 31,34,40);
-    public static int GLASS_LIGHT = Color.argb(225, 48,51,58);
-    public static final int BORDER = Color.argb(118,255,255,255);
-    public static final int BLACK = Color.rgb(8,8,10);
+    public static int GLASS = Color.argb(226, 15, 20, 29);
+    public static int GLASS_LIGHT = Color.argb(235, 27, 35, 48);
+    public static final int BORDER = Color.argb(58, 255, 255, 255);
+    public static final int BLACK = Color.rgb(6, 8, 12);
     public static int ICON_DP = 46;
-    private static boolean darkGlass;
+    private static boolean darkGlass = true;
+    private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
     private Ui() {}
 
+    public static Typeface mediumTypeface() { return MEDIUM; }
+
     public static int dp(Context c, float value) {
-        return (int)(value*c.getResources().getDisplayMetrics().density+0.5f);
+        return (int)(value * c.getResources().getDisplayMetrics().density + 0.5f);
     }
 
     public static void configure(boolean useDarkGlass, int accent, int iconSizeDp) {
@@ -31,36 +35,49 @@ public final class Ui {
         ACCENT = accent;
         ICON_DP = Math.max(36, Math.min(64, iconSizeDp));
         if (darkGlass) {
-            GLASS = Color.argb(224, 20,21,24);
-            GLASS_LIGHT = Color.argb(232, 43,45,50);
+            GLASS = Color.argb(226, 15, 20, 29);
+            GLASS_LIGHT = Color.argb(235, 27, 35, 48);
         } else {
-            GLASS = Color.argb(218, 44,46,51);
-            GLASS_LIGHT = Color.argb(232, 62,64,70);
+            GLASS = Color.argb(226, 238, 243, 250);
+            GLASS_LIGHT = Color.argb(238, 249, 251, 255);
         }
     }
 
     public static int primaryText() { return darkGlass ? WHITE : INK; }
     public static int secondaryText() { return darkGlass ? MUTED : MUTED_INK; }
+    public static int subtleBorder() { return darkGlass ? 0x42FFFFFF : 0x553A506B; }
 
     public static Drawable panel(Context c, int color, int radius) {
-        return new GlassDrawable(color, dp(c,radius), darkGlass);
+        return new GlassDrawable(color, dp(c, radius), darkGlass);
     }
 
     public static Drawable iconPlate(Context c) {
-        return new GlassDrawable(GLASS_LIGHT, dp(c,14), darkGlass);
+        return new GlassDrawable(GLASS_LIGHT, dp(c, 15), darkGlass);
     }
 
     public static void enter(View view, boolean enabled, int distance) {
-        if (!enabled) return;
-        view.setAlpha(0f);
-        view.setTranslationY(dp(view.getContext(), distance));
-        view.animate().alpha(1f).translationY(0f).setDuration(145)
-            .setInterpolator(new DecelerateInterpolator()).start();
+        LauncherMotionEngine.enter(view,enabled,distance);
+    }
+
+    public static void enterSurface(View view,boolean enabled) {
+        LauncherMotionEngine.enterSurface(view,enabled);
+    }
+
+    /** Immediate visual response while the finger is down; returns false so normal click/long-click handling continues. */
+    public static void attachTouchFeedback(View view, boolean enabled) {
+        if (view == null || !enabled) return;
+        view.setOnTouchListener((target, event) -> {
+            touchFeedback(target, event, true);
+            return false;
+        });
+    }
+
+    /** Use inside an existing touch listener when a view also handles gestures or drag-and-drop. */
+    public static void touchFeedback(View view, MotionEvent event, boolean enabled) {
+        LauncherMotionEngine.touchFeedback(view,event,enabled);
     }
 
     public static void press(View view, boolean enabled) {
-        if (!enabled) return;
-        view.animate().scaleX(0.96f).scaleY(0.96f).setDuration(75)
-            .withEndAction(() -> view.animate().scaleX(1f).scaleY(1f).setDuration(110).start()).start();
+        LauncherMotionEngine.press(view,enabled);
     }
 }

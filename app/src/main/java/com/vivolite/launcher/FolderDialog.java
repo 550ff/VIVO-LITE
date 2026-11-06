@@ -49,7 +49,9 @@ public class FolderDialog extends Dialog {
             cell.setOrientation(LinearLayout.VERTICAL);
             ImageView icon = new ImageView(context);
             iconViews.add(icon);
-            icon.setImageDrawable(cache.get(found.id, foundDrawable(context, found, apps)));
+            Drawable drawable = MainActivity.iconFor(found.id);
+            if (drawable != null) icon.setImageDrawable(drawable);
+            else icon.setImageResource(android.R.drawable.sym_def_app_icon);
             int iconSize=Math.min(Ui.ICON_DP,42);
             cell.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,iconSize),Ui.dp(context,iconSize)));
             TextView label = new TextView(context);
@@ -57,6 +59,7 @@ public class FolderDialog extends Dialog {
             label.setGravity(Gravity.CENTER); label.setSingleLine(true);
             cell.addView(label,new LinearLayout.LayoutParams(Ui.dp(context,78),Ui.dp(context,24)));
             cell.setOnClickListener(v -> listener.onLaunch(found.id));
+            Ui.attachTouchFeedback(cell,animations);
             cell.setOnLongClickListener(v -> {
                 folder.children.remove(found.id);
                 listener.onChanged(title.getText().toString(), folder.children);
@@ -81,6 +84,7 @@ public class FolderDialog extends Dialog {
             listener.onChanged(title.getText().toString().trim(), folder.children);
             dismiss();
         });
+        Ui.attachTouchFeedback(done,animations);
         setContentView(box);
         getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         getWindow().setLayout(Ui.dp(context,300),-2);
@@ -89,15 +93,6 @@ public class FolderDialog extends Dialog {
     private static LauncherItem find(List<LauncherItem> apps,String id) {
         for (LauncherItem item:apps) if(item.id.equals(id)) return item;
         return null;
-    }
-
-    private static Drawable foundDrawable(Context context, LauncherItem item, List<LauncherItem> apps) {
-        for (LauncherItem a:apps) if(a.id.equals(item.id)) return aDrawable(a);
-        return context.getResources().getDrawable(android.R.drawable.sym_def_app_icon);
-    }
-
-    private static Drawable aDrawable(LauncherItem item) {
-        return MainActivity.iconFor(item.id);
     }
 
     @Override public void dismiss() {

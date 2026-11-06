@@ -1,6 +1,7 @@
 package com.vivolite.launcher;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.AlertDialog;
 import android.appwidget.AppWidgetHost;
 import android.appwidget.AppWidgetHostView;
@@ -23,15 +24,16 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.provider.AlarmClock;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Choreographer;
 import android.view.DragEvent;
 import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
@@ -52,6 +54,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -71,9 +76,31 @@ public class MainActivity extends Activity {
     private HorizontalScrollView homePager;
     private LinearLayout pageTrack, pageDots;
     private final ArrayList<GridLayout> homeGrids = new ArrayList<>();
+    // Keep page shells cheap; materialize app cells only for the visible neighbourhood.
+    private final ArrayList<List<LauncherItem>> homePageItems = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuilt = new ArrayList<>();
+    private final ArrayList<Integer> homePageBuildIndex = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuildQueued = new ArrayList<>();
+    private final ArrayList<Boolean> homePageBuildAnimate = new ArrayList<>();
+    private final ArrayList<Integer> homePageBuildQueue = new ArrayList<>();
+    // Page-cell inflation runs only when the current frame has spare time.
+    // A fixed cell count can overrun a frame on slow CPUs or for folder previews.
+    private static final long HOME_BUILD_BUDGET_NANOS = 2_000_000L;
+    private static final int HOME_BUILD_MAX_CELLS_PER_FRAME = 2;
+    private boolean homeBuildFramePosted = false;
+    private final Choreographer.FrameCallback homeBuildFrame = frameTimeNanos -> {
+        homeBuildFramePosted = false;
+        runHomePageBuildFrame(frameTimeNanos);
+    };
+    private String homeEmptyMessage = "NO APPS AVAILABLE";
     private final Handler pageSnapHandler = new Handler(Looper.getMainLooper());
-    private Runnable pageSnap;
+    private final Runnable pageSnap = this::snapHomePage;
+    private boolean homePagerDragging = false;
+    // Keep page construction and hierarchy trimming off the active swipe/fling path.
+    private boolean homePagerScrolling = false;
     private int currentHomePage = 0;
+    private int lastHomePagerScrollX = 0;
+    private int homePageBuildDirection = 1;
     private static final int WIDGET_HOST_ID=0x564C;
     private static final int REQUEST_WIDGET_PICK=4100;
     private static final int REQUEST_WIDGET_CONFIGURE=4101;
@@ -87,11 +114,9 @@ public class MainActivity extends Activity {
     private TextClock clock, date;
     private TextView count;
     private FolderDialog activeFolderDialog;
-    private AppLibraryScreen activeLibraryScreen;
     private View activeSurfaceView;
     private NotificationScreen activeNotificationScreen;
     private int activeSurface = SurfaceNavigation.HOME;
-    private View smartEdgeOverlay;
     private TextView pulseCapsule;
     private boolean batteryReceiverRegistered=false;
     private LegacyTorchController torchController;
@@ -101,20 +126,32 @@ public class MainActivity extends Activity {
     private boolean iconsTrimmed = false;
     private boolean activityResumed = false;
     private boolean packagesDirty = false;
+    private boolean appLoadPaused = false;
+    private boolean appLoadNeedsApply = false;
     private String draggingId;
     private String armedDragId;
     private final Handler packageRefreshHandler = new Handler(Looper.getMainLooper());
     private final Runnable packageRefresh = () -> {
-        if(activityResumed){loadApps();if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();}
+        if(activityResumed){loadApps();}
         else packagesDirty=true;
     };
     private final Handler searchRenderHandler = new Handler(Looper.getMainLooper());
     private Runnable searchRender;
+    private final Handler appLoadHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService appLoader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "VIVO-LITE-AppScan");
+        thread.setPriority(Thread.NORM_PRIORITY - 1);
+        return thread;
+    });
+    private Future<?> appLoadTask;
+    private int appLoadGeneration = 0;
+    private boolean homeRenderedOnce = false;
 
     public static Drawable iconFor(String id) { return DRAWABLES.get(id); }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        LauncherMotionEngine.configure(this);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -138,7 +175,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildHome() {
-        closeSmartEdge();
+
         if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
         currentHomePage=storage.getHomePage();
         dock = null;
@@ -152,55 +189,101 @@ public class MainActivity extends Activity {
         LinearLayout brandBlock=new LinearLayout(this);
         brandBlock.setOrientation(LinearLayout.VERTICAL);
         brandBlock.setGravity(Gravity.CENTER_VERTICAL);
-        TextView brand = text("VIVO LITE",12,Ui.WHITE,true);
-        brand.setLetterSpacing(0.15f);
+        TextView brand = text("VIVO LITE",13,Ui.WHITE,true);
+        brand.setLetterSpacing(0.18f);
         brandBlock.addView(brand);
-        TextView strap=text("A CALMER HOME",8,Ui.MUTED,false);
+        TextView strap=text("YOUR SPACE, REFINED",8,Ui.secondaryText(),false);
         strap.setLetterSpacing(0.12f);
         brandBlock.addView(strap);
         top.addView(brandBlock,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
-        TextView library = pill("LIBRARY");
-        LinearLayout.LayoutParams libraryP=new LinearLayout.LayoutParams(Ui.dp(this,70),Ui.dp(this,34));
-        libraryP.rightMargin=Ui.dp(this,7);top.addView(library,libraryP);
-        library.setOnClickListener(v->openLibrary());
         TextView control = pill("CONTROL");
         top.addView(control,new LinearLayout.LayoutParams(Ui.dp(this,82),Ui.dp(this,34)));
         control.setOnClickListener(v->showControlCenter());
+        Ui.attachTouchFeedback(control,storage.animations());
         TextView addWidget=pill("+ WIDGET");
         LinearLayout.LayoutParams widgetButtonParams=new LinearLayout.LayoutParams(Ui.dp(this,76),Ui.dp(this,34));
         widgetButtonParams.rightMargin=Ui.dp(this,7);top.addView(addWidget,1,widgetButtonParams);
         addWidget.setOnClickListener(v->pickWidget());
+        Ui.attachTouchFeedback(addWidget,storage.animations());
         root.addView(top);
+
+        // A compact lock-screen-inspired clock card gives the home screen a clear
+        // visual anchor without consuming the space needed by the app grid.
+        FrameLayout clockCard = new FrameLayout(this);
+        clockCard.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,26));
+        LinearLayout clockRow = new LinearLayout(this);
+        clockRow.setGravity(Gravity.CENTER_VERTICAL);
+        clockRow.setPadding(Ui.dp(this,17),Ui.dp(this,8),Ui.dp(this,16),Ui.dp(this,8));
+
+        LinearLayout timeBlock = new LinearLayout(this);
+        timeBlock.setOrientation(LinearLayout.VERTICAL);
+        timeBlock.setGravity(Gravity.CENTER_VERTICAL);
+        TextView timeCaption = text("LOCAL TIME",8,Ui.ACCENT,true);
+        timeCaption.setLetterSpacing(0.16f);
+        timeBlock.addView(timeCaption,new LinearLayout.LayoutParams(-1,Ui.dp(this,14)));
 
         clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
-        clock.setGravity(Gravity.CENTER);
-        clock.setTextSize(58); clock.setTextColor(Ui.WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        clock.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);
+        clock.setTextSize(48); clock.setTextColor(Ui.WHITE);
+        clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
+        clock.setLetterSpacing(0.005f);
+        timeBlock.addView(clock,new LinearLayout.LayoutParams(-1,Ui.dp(this,60)));
+        clockRow.addView(timeBlock,new LinearLayout.LayoutParams(0,-2,1f));
+
+        View clockDivider = new View(this);
+        clockDivider.setBackgroundColor(Ui.subtleBorder());
+        LinearLayout.LayoutParams dividerParams=new LinearLayout.LayoutParams(Ui.dp(this,1),Ui.dp(this,48));
+        dividerParams.leftMargin=Ui.dp(this,8);
+        dividerParams.rightMargin=Ui.dp(this,13);
+        clockRow.addView(clockDivider,dividerParams);
+
+        LinearLayout dateBlock = new LinearLayout(this);
+        dateBlock.setOrientation(LinearLayout.VERTICAL);
+        dateBlock.setGravity(Gravity.CENTER);
+        TextClock weekdayClock = new TextClock(this);
+        weekdayClock.setFormat24Hour("EEE"); weekdayClock.setFormat12Hour("EEE");
+        weekdayClock.setGravity(Gravity.CENTER);
+        weekdayClock.setTextSize(9); weekdayClock.setTextColor(Ui.secondaryText());
+        weekdayClock.setTypeface(Ui.mediumTypeface());
+        weekdayClock.setLetterSpacing(0.12f);
+        dateBlock.addView(weekdayClock,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,16)));
+
+        TextClock dayNumber = new TextClock(this);
+        dayNumber.setFormat24Hour("dd"); dayNumber.setFormat12Hour("dd");
+        dayNumber.setGravity(Gravity.CENTER);
+        dayNumber.setTextSize(27); dayNumber.setTextColor(Ui.primaryText());
+        dayNumber.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        dateBlock.addView(dayNumber,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,34)));
+
+        date = new TextClock(this);
+        date.setFormat24Hour("MMM"); date.setFormat12Hour("MMM");
+        date.setGravity(Gravity.CENTER);
+        date.setTextSize(9); date.setTextColor(Ui.secondaryText());
+        date.setLetterSpacing(0.12f);
+        date.setTypeface(Ui.mediumTypeface());
+        dateBlock.addView(date,new LinearLayout.LayoutParams(Ui.dp(this,64),Ui.dp(this,16)));
+        clockRow.addView(dateBlock,new LinearLayout.LayoutParams(Ui.dp(this,64),-2));
+        clockCard.addView(clockRow,new FrameLayout.LayoutParams(-1,-1));
+
         final float[] clockTouchY={0f};
         clock.setOnTouchListener((view,event)->{
             if(event.getAction()==MotionEvent.ACTION_DOWN){clockTouchY[0]=event.getY();return true;}
             if(event.getAction()==MotionEvent.ACTION_UP){
                 float delta=event.getY()-clockTouchY[0];
                 if(Math.abs(delta)>Ui.dp(this,42)) {
-                    if(delta<0)openLibrary();
+                    if(delta<0)showHomePage(currentHomePage+1,true);
                     else showControlCenter();
                 }
                 return true;
             }
             return true;
         });
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,Ui.dp(this,70));
-        cp.topMargin=Ui.dp(this,11); root.addView(clock,cp);
-
-        date = new TextClock(this);
-        date.setGravity(Gravity.CENTER);
-        date.setFormat24Hour("EEEE  ·  d MMMM"); date.setFormat12Hour("EEEE  ·  d MMMM");
-        date.setTextSize(13); date.setTextColor(Ui.MUTED);
-        date.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
-        dp.bottomMargin=Ui.dp(this,16); root.addView(date,dp);
-        if(!storage.showClock()){clock.setVisibility(View.GONE);date.setVisibility(View.GONE);}
+        LinearLayout.LayoutParams clockCardParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,96));
+        clockCardParams.topMargin=Ui.dp(this,12);
+        clockCardParams.bottomMargin=Ui.dp(this,10);
+        root.addView(clockCard,clockCardParams);
+        if(!storage.showClock()){clockCard.setVisibility(View.GONE);}
 
         pulseCapsule=text("PULSE  ·  "+batterySummary(),9,Ui.primaryText(),true);
         pulseCapsule.setGravity(Gravity.CENTER);
@@ -209,13 +292,22 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams pulseParams=new LinearLayout.LayoutParams(-1,Ui.dp(this,32));
         pulseParams.bottomMargin=Ui.dp(this,8);root.addView(pulseCapsule,pulseParams);
         pulseCapsule.setOnClickListener(v->showControlCenter());
-        pulseCapsule.setOnLongClickListener(v->{showSmartEdge();return true;});
+        Ui.attachTouchFeedback(pulseCapsule,storage.animations());
 
         widgetShelf=new LinearLayout(this);widgetShelf.setOrientation(LinearLayout.VERTICAL);
         root.addView(widgetShelf,new LinearLayout.LayoutParams(-1,-2));
 
         search = new EditText(this);
-        search.setSingleLine(true); search.setTextSize(14); search.setTextColor(Ui.primaryText());
+        search.setSingleLine(true); search.setTextSize(13); search.setTextColor(Ui.primaryText());
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        search.setOnEditorActionListener((view,actionId,event)->{
+            if(actionId==EditorInfo.IME_ACTION_SEARCH||actionId==EditorInfo.IME_ACTION_DONE) {
+                try { ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(search.getWindowToken(),0); }
+                catch(Exception ignored) {}
+                return true;
+            }
+            return false;
+        });
         search.setHintTextColor(Ui.secondaryText()); search.setHint("⌕   Search your apps");
         search.setPadding(Ui.dp(this,16),0,Ui.dp(this,16),0);
         search.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,22));
@@ -224,13 +316,15 @@ public class MainActivity extends Activity {
 
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("YOUR APPS",10,Ui.MUTED,true);
+        TextView title=text("YOUR APPS",10,Ui.secondaryText(),true);
         title.setLetterSpacing(0.14f);
         heading.addView(title,new LinearLayout.LayoutParams(0,Ui.dp(this,38),1));
         count=text("0 ITEMS",9,Ui.MUTED,false); count.setLetterSpacing(0.06f); heading.addView(count);
         root.addView(heading);
 
         homePager=new HorizontalScrollView(this);
+        homePagerDragging=false;
+        homePagerScrolling=false;
         homePager.setFillViewport(true);
         homePager.setHorizontalScrollBarEnabled(false);
         homePager.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -238,15 +332,23 @@ public class MainActivity extends Activity {
         pageTrack.setOrientation(LinearLayout.HORIZONTAL);
         homePager.addView(pageTrack,new HorizontalScrollView.LayoutParams(-2,-1));
         homePager.setOnTouchListener((view,event)->{
-            if(event.getAction()==MotionEvent.ACTION_UP){
+            int action=event.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN) {
+                homePagerDragging=true;
+                homePagerScrolling=true;
                 if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
-                pageSnap=()->snapHomePage();pageSnapHandler.postDelayed(pageSnap,90);
+            } else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL) {
+                homePagerDragging=false;
+                homePagerScrolling=true;
+                schedulePageSnap();
             }
             return false;
         });
         root.addView(homePager,new LinearLayout.LayoutParams(-1,0,1));
         pageDots=new LinearLayout(this);pageDots.setGravity(Gravity.CENTER);
         root.addView(pageDots,new LinearLayout.LayoutParams(-1,Ui.dp(this,20)));
+        homePager.getViewTreeObserver().addOnScrollChangedListener(this::onHomePagerScrolled);
+        homePager.post(this::clearHomePageDepth);
 
         if(storage.showDock()) {
             dock=new LinearLayout(this);
@@ -261,12 +363,8 @@ public class MainActivity extends Activity {
         navigationParams.topMargin=Ui.dp(this,7);
         root.addView(new SurfaceNavigation(this,SurfaceNavigation.HOME),navigationParams);
         homeFrame=new FrameLayout(this);
-        homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
+        homeFrame.setBackgroundColor(Color.TRANSPARENT);
         homeFrame.addView(root,new FrameLayout.LayoutParams(-1,-1));
-        View edgeHandle=new View(this);edgeHandle.setContentDescription("Open Smart Edge quick tools");
-        edgeHandle.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,10));edgeHandle.setAlpha(0.68f);
-        FrameLayout.LayoutParams edgeParams=new FrameLayout.LayoutParams(Ui.dp(this,20),Ui.dp(this,88),Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        homeFrame.addView(edgeHandle,edgeParams);edgeHandle.setOnClickListener(v->showSmartEdge());
         setContentView(homeFrame);
 
         search.addTextChangedListener(new TextWatcher() {
@@ -302,7 +400,7 @@ public class MainActivity extends Activity {
 
     private TextView text(String value,int size,int color,boolean bold) {
         TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);
-        if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        if(bold)t.setTypeface(Ui.mediumTypeface());
         return t;
     }
 
@@ -324,33 +422,85 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(13,19,30));
         getWindow().setNavigationBarColor(Color.rgb(13,19,30));
         if(root!=null)root.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
-        if(homeFrame!=null)homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
     }
 
     private void loadApps() {
-        iconPackManager.select(storage.getIconPack());
-        apps.clear(); DRAWABLES.clear();
-        PackageManager pm=getPackageManager();
-        Intent query=new Intent(Intent.ACTION_MAIN);query.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found=pm.queryIntentActivities(query,0);
-        Set<String> seen=new HashSet<>();
-        for(ResolveInfo r:found) {
-            if(r.activityInfo==null || r.activityInfo.packageName.equals(getPackageName()))continue;
-            String pkg=r.activityInfo.packageName, cls=r.activityInfo.name, id=pkg+"/"+cls;
-            if(!seen.add(id))continue;
-            CharSequence label=r.loadLabel(pm);
-            LauncherItem item=LauncherItem.app(id,label==null?cls.substring(cls.lastIndexOf('.')+1):String.valueOf(label),pkg,cls);
-            apps.add(item);
-            Drawable drawable=iconPackManager.icon(pkg,cls);
-            boolean monochrome=drawable==null;
-            if(monochrome)drawable=r.loadIcon(pm);
-            DRAWABLES.put(id,iconCache.get(id,drawable,monochrome));
-        }
-        Collections.sort(apps,new Comparator<LauncherItem>() {
-            public int compare(LauncherItem a,LauncherItem b){return a.title.compareToIgnoreCase(b.title);}
+        appLoadPaused = false;
+        appLoadNeedsApply = true;
+        final int generation = ++appLoadGeneration;
+        final String selectedPack = storage.getIconPack();
+        final Context appContext = getApplicationContext();
+        if (appLoadTask != null) appLoadTask.cancel(true);
+
+        appLoadTask = appLoader.submit(() -> {
+            try {
+            PackageManager pm = appContext.getPackageManager();
+            IconPackManager loadedPack = new IconPackManager(appContext);
+            loadedPack.select(selectedPack);
+            ArrayList<LauncherItem> loadedApps = new ArrayList<>();
+            Map<String,Drawable> loadedDrawables = new HashMap<>();
+            Intent query = new Intent(Intent.ACTION_MAIN);
+            query.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> found = pm.queryIntentActivities(query, 0);
+            Set<String> seen = new HashSet<>();
+
+            for (ResolveInfo r : found) {
+                if (Thread.currentThread().isInterrupted()) return;
+                if (r.activityInfo == null || r.activityInfo.packageName.equals(getPackageName())) continue;
+                String pkg = r.activityInfo.packageName;
+                String cls = r.activityInfo.name;
+                String id = pkg + "/" + cls;
+                if (!seen.add(id)) continue;
+                try {
+                    CharSequence label = r.loadLabel(pm);
+                    LauncherItem item = LauncherItem.app(
+                        id, label == null ? cls.substring(cls.lastIndexOf('.') + 1) : String.valueOf(label),
+                        pkg, cls
+                    );
+                    Drawable drawable = loadedPack.icon(pkg, cls);
+                    boolean monochrome = drawable == null;
+                    if (monochrome) drawable = r.loadIcon(pm);
+                    Drawable cachedIcon = iconCache.get(id, drawable, monochrome);
+                    loadedApps.add(item);
+                    loadedDrawables.put(id, cachedIcon);
+                } catch (RuntimeException unavailable) {
+                    // An app can be removed or updated while the package scan is running.
+                    // Skip only that stale entry instead of aborting the entire library refresh.
+                }
+            }
+
+            Collections.sort(loadedApps, new Comparator<LauncherItem>() {
+                public int compare(LauncherItem a, LauncherItem b) {
+                    return a.title.compareToIgnoreCase(b.title);
+                }
+            });
+
+            appLoadHandler.post(() -> {
+                if (generation != appLoadGeneration || isFinishing()) return;
+                appLoadNeedsApply = false;
+                iconPackManager = loadedPack;
+                apps.clear();
+                apps.addAll(loadedApps);
+                DRAWABLES.clear();
+                DRAWABLES.putAll(loadedDrawables);
+                restoreHomeItems();
+                render(search == null ? "" : search.getText().toString());
+            });
+            } catch (RuntimeException scanFailure) {
+                // Keep the last good app list if PackageManager or icon-pack loading
+                // fails during a refresh. A failed refresh must not strand the launcher
+                // in a permanent loading state or replace working entries with nothing.
+                appLoadHandler.post(() -> {
+                    if (generation != appLoadGeneration || isFinishing()) return;
+                    appLoadNeedsApply = false;
+                    appLoadPaused = false;
+                    if (activityResumed) {
+                        Toast.makeText(this, "App refresh failed · showing previous apps",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
         });
-        restoreHomeItems();
-        render(search==null?"":search.getText().toString());
     }
 
     private void restoreHomeItems() {
@@ -417,7 +567,10 @@ public class MainActivity extends Activity {
     }
 
     private void render(String filter) {
-        render(filter,true,true);
+        if (homePager == null) return;
+        boolean animateFirstRender = !homeRenderedOnce;
+        homeRenderedOnce = true;
+        render(filter,animateFirstRender,true);
     }
 
     private void render(String filter,boolean animate,boolean refreshDock) {
@@ -434,84 +587,248 @@ public class MainActivity extends Activity {
                 }
             } else if(!hidden.contains(item.id)&&item.title.toLowerCase(Locale.ROOT).contains(q))visible.add(item);
         }
-        count.setText(visible.size()+" ITEMS");
         if(!q.isEmpty())currentHomePage=0;
         renderHomePages(visible,animate,q);
         if(refreshDock)renderDock();
     }
 
     private void renderHomePages(List<LauncherItem> visible,boolean animate,String query) {
-        pageTrack.removeAllViews();pageDots.removeAllViews();homeGrids.clear();grid=null;
-        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
-        int pageCapacity=Math.max(columns,columns*4);
+        resetHomePageBuilds();
+        pageTrack.removeAllViews();
+        pageDots.removeAllViews();
+        homeGrids.clear();
+        homePageItems.clear();
+        homePageBuilt.clear();
+        homePageBuildIndex.clear();
+        homePageBuildQueued.clear();
+        homePageBuildAnimate.clear();
+        grid=null;
+
+        int width=homePageWidth();
+        int pageCapacity=columns*4;
         int pageCount=Math.max(1,(visible.size()+pageCapacity-1)/pageCapacity);
-        int cell=width/columns;
+        currentHomePage=Math.min(currentHomePage,pageCount-1);
+        homeEmptyMessage=query.isEmpty()?"NO APPS AVAILABLE":"NO MATCHES  ·  TRY ANOTHER NAME";
+
         for(int page=0;page<pageCount;page++) {
-            ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
-            GridLayout pageGrid=new GridLayout(this);pageGrid.setColumnCount(columns);homeGrids.add(pageGrid);
+            ScrollView scroll=new ScrollView(this);
+            scroll.setFillViewport(false);
+            scroll.setVerticalScrollBarEnabled(false);
+
+            GridLayout pageGrid=new GridLayout(this);
+            pageGrid.setColumnCount(columns);
+            homeGrids.add(pageGrid);
             if(grid==null)grid=pageGrid;
             scroll.addView(pageGrid,new ScrollView.LayoutParams(-1,-2));
-            int start=page*pageCapacity,end=Math.min(visible.size(),start+pageCapacity);
-            for(int index=start;index<end;index++) {
-                LauncherItem item=visible.get(index);
-                LinearLayout cellView=makeCell(item,animate&&query.isEmpty()&&index-start<columns);
-                GridLayout.LayoutParams params=new GridLayout.LayoutParams();
-                params.width=cell;params.height=Ui.dp(this,104);pageGrid.addView(cellView,params);
-            }
+
+            int start=page*pageCapacity;
+            int end=Math.min(visible.size(),start+pageCapacity);
+            homePageItems.add(new ArrayList<>(visible.subList(start,end)));
+            homePageBuilt.add(false);
+            homePageBuildIndex.add(0);
+            homePageBuildQueued.add(false);
+            homePageBuildAnimate.add(false);
             pageTrack.addView(scroll,new LinearLayout.LayoutParams(width,-1));
+
             final int targetPage=page;
-            TextView dot=text("●",9,page==currentHomePage?Ui.primaryText():Ui.secondaryText(),false);
-            dot.setGravity(Gravity.CENTER);dot.setContentDescription("Home page "+(page+1));
+            TextView dot=text(page==currentHomePage?"━":"•",page==currentHomePage?13:10,
+                    page==currentHomePage?Ui.ACCENT:Ui.secondaryText(),false);
+            dot.setGravity(Gravity.CENTER);
+            dot.setContentDescription("Home page "+(page+1));
             pageDots.addView(dot,new LinearLayout.LayoutParams(Ui.dp(this,22),Ui.dp(this,20)));
             dot.setOnClickListener(v->showHomePage(targetPage,true));
+            Ui.attachTouchFeedback(dot,storage.animations());
         }
-        currentHomePage=Math.min(currentHomePage,pageCount-1);
+
+        if(count!=null)count.setText(visible.isEmpty()
+                ?(query.isEmpty()?"0 ITEMS":"NO MATCHES")
+                :String.format(Locale.ROOT,"%02d / %02d",currentHomePage+1,pageCount));
         if(query.isEmpty())storage.setHomePage(currentHomePage);
-        homePager.post(()->homePager.scrollTo(currentHomePage*width,0));
-        updatePageIndicator();
+
+        // Queue the active and neighbouring pages. Cells are added in small
+        // frame-scheduled batches rather than one large main-thread layout burst.
+        preloadNearbyHomePages(currentHomePage,animate&&query.isEmpty());
+        homePager.post(()->{
+            homePager.scrollTo(currentHomePage*width,0);
+            lastHomePagerScrollX=homePager.getScrollX();
+            homePageBuildDirection=1;
+            updatePageIndicator();
+            preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
+        });
+    }
+
+    private void resetHomePageBuilds() {
+        cancelHomePageBuildFrame();
+        homePageBuildQueue.clear();
+    }
+
+    private void cancelHomePageBuildFrame() {
+        if(homeBuildFramePosted) {
+            Choreographer.getInstance().removeFrameCallback(homeBuildFrame);
+            homeBuildFramePosted=false;
+        }
+    }
+
+    private void scheduleHomePageBuildFrame() {
+        if(homeBuildFramePosted||homePageBuildQueue.isEmpty()||homePager==null
+                ||homePagerDragging||homePagerScrolling
+                ||!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing())return;
+        homeBuildFramePosted=true;
+        Choreographer.getInstance().postFrameCallback(homeBuildFrame);
+    }
+
+    private void buildHomePage(int page,boolean animate) {
+        if(page<0||page>=homeGrids.size()||homePageBuilt.get(page))return;
+        if(homePageBuildQueued.get(page)) {
+            if(animate)homePageBuildAnimate.set(page,true);
+            // A page that has just become visible must jump ahead of stale
+            // neighbour-prefetch work left over from the previous swipe.
+            int queuedIndex=homePageBuildQueue.indexOf(page);
+            if(queuedIndex>0) {
+                homePageBuildQueue.remove(queuedIndex);
+                homePageBuildQueue.add(0,page);
+            }
+            scheduleHomePageBuildFrame();
+            return;
+        }
+        homePageBuildQueued.set(page,true);
+        homePageBuildAnimate.set(page,animate);
+        homePageBuildQueue.add(page);
+        scheduleHomePageBuildFrame();
+    }
+
+    private void runHomePageBuildFrame(long frameTimeNanos) {
+        if(!activityResumed||activeSurface!=SurfaceNavigation.HOME||isFinishing()
+                ||homePager==null||homePagerDragging||homePagerScrolling)return;
+
+        // Choreographer's frame timestamp and System.nanoTime() share a time base.
+        // Leave most of the 16.7 ms 60 Hz frame for traversal, drawing and input.
+        final long buildDeadlineNanos=frameTimeNanos+HOME_BUILD_BUDGET_NANOS;
+        int builtCells=0;
+        while(builtCells<HOME_BUILD_MAX_CELLS_PER_FRAME
+                &&System.nanoTime()<buildDeadlineNanos&&!homePageBuildQueue.isEmpty()) {
+            int page=homePageBuildQueue.get(0);
+            if(page<0||page>=homeGrids.size()) {
+                homePageBuildQueue.remove(0);
+                continue;
+            }
+
+            GridLayout pageGrid=homeGrids.get(page);
+            List<LauncherItem> items=homePageItems.get(page);
+            if(items.isEmpty()) {
+                if(pageGrid.getChildCount()==0) {
+                    TextView empty=text(homeEmptyMessage,11,Ui.secondaryText(),true);
+                    empty.setGravity(Gravity.CENTER);
+                    empty.setLetterSpacing(0.05f);
+                    GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                    params.width=homePageWidth();
+                    params.height=Ui.dp(this,144);
+                    pageGrid.addView(empty,params);
+                }
+                finishHomePageBuild(page);
+                continue;
+            }
+
+            int index=homePageBuildIndex.get(page);
+            while(index<items.size()&&builtCells<HOME_BUILD_MAX_CELLS_PER_FRAME
+                    &&System.nanoTime()<buildDeadlineNanos) {
+                LauncherItem item=items.get(index);
+                boolean animate=homePageBuildAnimate.get(page)&&index<columns;
+                View cellView=makeCell(item,animate);
+                GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+                params.width=homePageWidth()/columns;
+                params.height=Ui.dp(this,104);
+                pageGrid.addView(cellView,params);
+                index++;
+                builtCells++;
+            }
+            homePageBuildIndex.set(page,index);
+            if(index>=items.size())finishHomePageBuild(page);
+        }
+
+        if(!homePageBuildQueue.isEmpty())scheduleHomePageBuildFrame();
+    }
+
+    private void finishHomePageBuild(int page) {
+        homePageBuilt.set(page,true);
+        homePageBuildQueued.set(page,false);
+        homePageBuildAnimate.set(page,false);
+        homePageBuildIndex.set(page,homePageItems.get(page).size());
+        if(!homePageBuildQueue.isEmpty()&&homePageBuildQueue.get(0)==page)
+            homePageBuildQueue.remove(0);
+    }
+
+    private void trimDistantHomePages(int center) {
+        // Keep only the visible page and its immediate neighbours populated.
+        // The lightweight page shells remain so horizontal swipe geometry is stable.
+        for(int i=homePageBuildQueue.size()-1;i>=0;i--) {
+            int page=homePageBuildQueue.get(i);
+            if(Math.abs(page-center)>1) {
+                homePageBuildQueue.remove(i);
+                if(page>=0&&page<homePageBuildQueued.size()) {
+                    homePageBuildQueued.set(page,false);
+                    homePageBuildIndex.set(page,0);
+                    homePageBuildAnimate.set(page,false);
+                }
+            }
+        }
+        for(int page=0;page<homeGrids.size();page++) {
+            if(Math.abs(page-center)<=1)continue;
+            if(homePageBuilt.get(page)||homePageBuildIndex.get(page)>0
+                    ||homeGrids.get(page).getChildCount()>0) {
+                homeGrids.get(page).removeAllViews();
+                homePageBuilt.set(page,false);
+                homePageBuildIndex.set(page,0);
+                homePageBuildQueued.set(page,false);
+                homePageBuildAnimate.set(page,false);
+            }
+        }
+    }
+
+    private void preloadNearbyHomePages(int center,boolean animateCenter) {
+        preloadNearbyHomePages(center,animateCenter,homePageBuildDirection);
+    }
+
+    private void preloadNearbyHomePages(int center,boolean animateCenter,int direction) {
+        // Always build the page the user can see first, then prefetch in the
+        // direction of travel. This prevents reverse swipes waiting behind
+        // a page that is no longer relevant.
+        buildHomePage(center,animateCenter);
+        if(direction<0) {
+            buildHomePage(center-1,false);
+            buildHomePage(center+1,false);
+        } else {
+            buildHomePage(center+1,false);
+            buildHomePage(center-1,false);
+        }
+    }
+
+    private int homePageWidth() {
+        return Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
     }
 
     private void showHomePage(int page,boolean smooth) {
-        int width=Math.max(Ui.dp(this,240),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
-        currentHomePage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
-        if(search==null||search.length()==0)storage.setHomePage(currentHomePage);
-        if(smooth)homePager.smoothScrollTo(currentHomePage*width,0);else homePager.scrollTo(currentHomePage*width,0);
-        updatePageIndicator();
-    }
-
-    private void showSmartEdge() {
-        if(smartEdgeOverlay!=null||homeFrame==null)return;
-        FrameLayout overlay=new FrameLayout(this);
-        View scrim=new View(this);scrim.setBackgroundColor(0x88000000);overlay.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
-        scrim.setOnClickListener(v->closeSmartEdge());
-        ArrayList<LauncherItem> quickFavorites=new ArrayList<>();
-        for(LauncherItem app:apps)if(favorites.contains(app.id)&&!hidden.contains(app.id)&&quickFavorites.size()<12)quickFavorites.add(app);
-        SmartEdgePanel panel=new SmartEdgePanel(this,quickFavorites,this::runSmartEdgeAction,()->closeSmartEdge());
-        FrameLayout.LayoutParams panelParams=new FrameLayout.LayoutParams(Ui.dp(this,280),-1,Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        overlay.addView(panel,panelParams);
-        homeFrame.addView(overlay,new FrameLayout.LayoutParams(-1,-1));smartEdgeOverlay=overlay;
-        panel.setTranslationX(Ui.dp(this,280));
-        panel.animate().translationX(0).setDuration(storage.animations()?180:0).start();
-    }
-
-    private void closeSmartEdge() {
-        View overlay=smartEdgeOverlay;if(overlay==null)return;
-        smartEdgeOverlay=null;
-        if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);
-    }
-
-    private void runSmartEdgeAction(String action) {
-        closeSmartEdge();
-        try {
-            if(action.equals("timer")) {
-                Intent timer=new Intent(AlarmClock.ACTION_SET_TIMER);timer.putExtra(AlarmClock.EXTRA_LENGTH,300);timer.putExtra(AlarmClock.EXTRA_SKIP_UI,false);startActivity(timer);
-            } else if(action.equals("calculator")) {
-                Intent calculator=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALCULATOR);
-                if(calculator.resolveActivity(getPackageManager())!=null)startActivity(calculator);
-                else Toast.makeText(this,"No calculator app is installed",Toast.LENGTH_SHORT).show();
-            } else if(action.equals("note"))editQuickNote();
-            else if(action.startsWith("app:"))launch(action.substring(4));
-        } catch(Exception e) { Toast.makeText(this,"That tool is unavailable on this device",Toast.LENGTH_SHORT).show(); }
+        int width=homePageWidth();
+        int targetPage=Math.max(0,Math.min(page,Math.max(0,homeGrids.size()-1)));
+        int previousPage=currentHomePage;
+        if(targetPage!=previousPage)homePageBuildDirection=targetPage>previousPage?1:-1;
+        if(search==null||search.length()==0)storage.setHomePage(targetPage);
+        preloadNearbyHomePages(targetPage,false,homePageBuildDirection);
+        if(smooth) {
+            // Keep currentHomePage tied to the actual scroll position. Setting it
+            // to the destination early makes the first scroll callback mistake
+            // the old page for a reversal and cancel a distant target's prefetch.
+            homePagerScrolling=true;
+            homePager.smoothScrollTo(targetPage*width,0);
+            // Also cover no-op smoothScrollTo calls, which may emit no scroll callback.
+            schedulePageSnap();
+        } else {
+            currentHomePage=targetPage;
+            homePager.scrollTo(targetPage*width,0);
+            homePagerScrolling=false;
+            lastHomePagerScrollX=homePager.getScrollX();
+            updatePageIndicator();
+        }
     }
 
     private void editQuickNote() {
@@ -522,7 +839,10 @@ public class MainActivity extends Activity {
     }
 
     private String batterySummary() {
-        Intent status=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        return batterySummary(registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
+    }
+
+    private String batterySummary(Intent status) {
         if(status==null)return "BATTERY UNAVAILABLE";
         int level=status.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
         int scale=status.getIntExtra(android.os.BatteryManager.EXTRA_SCALE,-1);
@@ -534,86 +854,188 @@ public class MainActivity extends Activity {
 
     private final BroadcastReceiver batteryReceiver=new BroadcastReceiver() {
         @Override public void onReceive(Context context,Intent intent) {
-            if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary());
+            if(pulseCapsule!=null)pulseCapsule.setText("PULSE  ·  "+batterySummary(intent));
         }
     };
 
-    private void snapHomePage() {
+    private void onHomePagerScrolled() {
+        homePagerScrolling=true;
+        int scrollX=homePager.getScrollX();
+        if(scrollX!=lastHomePagerScrollX) {
+            homePageBuildDirection=scrollX>lastHomePagerScrollX?1:-1;
+            lastHomePagerScrollX=scrollX;
+        }
+        updatePageIndicator();
+        applyHomePageDepth();
+        // A fling keeps producing scroll callbacks after ACTION_UP. Debounce from
+        // the final scroll frame instead of snapping 90ms after the finger lifts.
+        if(!homePagerDragging)schedulePageSnap();
+    }
+
+    private void schedulePageSnap() {
         if(homePager==null||homeGrids.isEmpty())return;
-        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
-        int page=Math.round((float)homePager.getScrollX()/width);
-        showHomePage(page,true);
+        pageSnapHandler.removeCallbacks(pageSnap);
+        pageSnapHandler.postDelayed(pageSnap,140);
+    }
+
+    private void snapHomePage() {
+        if(homePager==null||homeGrids.isEmpty()||homePagerDragging)return;
+        int width=homePageWidth();
+        int settledPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),homeGrids.size()-1));
+        int target=settledPage*width;
+        if(Math.abs(homePager.getScrollX()-target)>Ui.dp(this,2)) {
+            // A correction scroll will schedule another settle after its final frame.
+            showHomePage(target/width,true);
+            return;
+        }
+        homePagerScrolling=false;
+        clearHomePageDepth();
+        // Remove distant cells only after motion stops; removeAllViews() during a
+        // fling forces main-thread hierarchy work in the middle of a frame.
+        trimDistantHomePages(settledPage);
+        preloadNearbyHomePages(settledPage,false,homePageBuildDirection);
+        scheduleHomePageBuildFrame();
+    }
+
+    /**
+     * Subtle depth/parallax while paging. Adjacent pages are cached as GPU layers only
+     * while the finger/fling is moving; the layers are released as soon as snapping ends.
+     */
+    private void applyHomePageDepth() {
+        if(homePager==null||homeGrids.isEmpty())return;
+        int width=homePageWidth();
+        if(width<=0)return;
+        int scrollX=homePager.getScrollX();
+        for(GridLayout page:homeGrids) {
+            float offset=(page.getLeft()-scrollX)/(float)width;
+            float distance=Math.min(1f,Math.abs(offset));
+            boolean near=Math.abs(offset)<1.18f;
+            int layer=near?View.LAYER_TYPE_HARDWARE:View.LAYER_TYPE_NONE;
+            if(page.getLayerType()!=layer)page.setLayerType(layer,null);
+            page.setPivotX(width*0.5f);
+            page.setPivotY(Math.max(1,page.getHeight())*0.5f);
+            page.setScaleX(1f-distance*0.045f);
+            page.setScaleY(1f-distance*0.045f);
+            page.setAlpha(1f-distance*0.14f);
+            page.setTranslationX(-offset*Ui.dp(this,8));
+        }
+    }
+
+    private void clearHomePageDepth() {
+        if(homeGrids.isEmpty())return;
+        for(GridLayout page:homeGrids) {
+            if(page.getLayerType()!=View.LAYER_TYPE_NONE)
+                page.setLayerType(View.LAYER_TYPE_NONE,null);
+            page.setAlpha(1f);
+            page.setScaleX(1f);
+            page.setScaleY(1f);
+            page.setTranslationX(0f);
+        }
     }
 
     private void updatePageIndicator() {
         if(pageDots==null||homePager==null)return;
-        int width=Math.max(1,getResources().getDisplayMetrics().widthPixels-Ui.dp(this,44));
-        currentHomePage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
-        for(int i=0;i<pageDots.getChildCount();i++) {
-            TextView dot=(TextView)pageDots.getChildAt(i);
-            dot.setTextColor(i==currentHomePage?Ui.primaryText():Ui.secondaryText());
-            dot.setText(i==currentHomePage?"●":"○");
-        }
+        int width=homePageWidth();
+        int nextPage=Math.max(0,Math.min(Math.round((float)homePager.getScrollX()/width),pageDots.getChildCount()-1));
+        if(nextPage==currentHomePage)return;
+        currentHomePage=nextPage;
+        // Queue only while scrolling. Actual view creation and hierarchy trimming
+        // are deferred until the fling has settled, keeping the gesture path light.
+        preloadNearbyHomePages(currentHomePage,false,homePageBuildDirection);
+        updatePageDots(currentHomePage);
     }
 
-    private LinearLayout makeCell(LauncherItem item,boolean animate) {
-        LinearLayout cell=new LinearLayout(this);
-        cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(Gravity.CENTER);
-        cell.setPadding(Ui.dp(this,2),Ui.dp(this,8),Ui.dp(this,2),Ui.dp(this,4));
-        View iconView;
-        if(item.isFolder()) iconView=folderPreview(item);
-        else {
-            ImageView icon=new ImageView(this);
-            Drawable d=DRAWABLES.get(item.id);
-            if(d!=null)icon.setImageDrawable(d);
-            icon.setBackground(Ui.iconPlate(this));
-            icon.setPadding(Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3));
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int available= Math.max(32,(getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40))/columns-8);
-            int iconSize=Ui.dp(this,Math.min(Ui.ICON_DP,available));
-            iconView=icon;
-            cell.addView(iconView,new LinearLayout.LayoutParams(iconSize,iconSize));
+    private void updatePageDots(int selectedPage) {
+        for(int i=0;i<pageDots.getChildCount();i++) {
+            TextView dot=(TextView)pageDots.getChildAt(i);
+            dot.setTextColor(i==selectedPage?Ui.ACCENT:Ui.secondaryText());
+            dot.setText(i==selectedPage?"━":"•");
+            dot.setTextSize(i==selectedPage?13:10);
         }
-        if(item.isFolder())cell.addView(iconView,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
-        TextView name=text(item.title,10,Ui.WHITE,false);
-        name.setGravity(Gravity.CENTER);name.setSingleLine(true);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
-        np.topMargin=Ui.dp(this,4);cell.addView(name,np);
-        cell.setOnClickListener(v->{
-            Ui.press(cell,storage.animations());
-            if(item.isFolder())openFolder(item);else launch(item.id);
-        });
-        cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
-        cell.setOnTouchListener((v,event)->{
-            if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
-                android.content.ClipData data = android.content.ClipData.newPlainText("VIVO_LITE_ITEM", item.id);
-                v.startDrag(data, new View.DragShadowBuilder(v), item.id, 0);
-                armedDragId = null;
-                return true;
-            }
-            return false;
-        });
-        cell.setOnDragListener((v,event)->handleDrop(v,item,event));
-        if(item.isFolder())cell.setOnClickListener(v->openFolder(item));
-        if(animate&&storage.animations())Ui.enter(cell,true,4);
-        return cell;
+        if(count!=null&&pageDots.getChildCount()>0)
+            count.setText(String.format(Locale.ROOT,"%02d / %02d",selectedPage+1,pageDots.getChildCount()));
     }
 
     private View folderPreview(LauncherItem folder) {
-        GridLayout preview=new GridLayout(this);preview.setColumnCount(2);
-        preview.setPadding(Ui.dp(this,5),Ui.dp(this,5),Ui.dp(this,5),Ui.dp(this,5));
-        preview.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,13));
-        for(int i=0;i<4;i++) {
-            ImageView image=new ImageView(this);
-            if(i<folder.children.size()) {
-                Drawable d=DRAWABLES.get(folder.children.get(i));
-                if(d!=null)image.setImageDrawable(d);
+        FrameLayout preview=new FrameLayout(this);
+        preview.setBackground(Ui.iconPlate(this));
+        GridLayout miniGrid=new GridLayout(this);
+        miniGrid.setColumnCount(2);
+        miniGrid.setRowCount(2);
+        int added=0;
+        for(String childId:folder.children) {
+            if(added>=4)break;
+            LauncherItem child=findApp(childId);
+            if(child==null)continue;
+            ImageView mini=new ImageView(this);
+            Drawable drawable=DRAWABLES.get(child.id);
+            if(drawable!=null) {
+                Drawable.ConstantState state=drawable.getConstantState();
+                mini.setImageDrawable(state==null?drawable:state.newDrawable(getResources()));
+            } else {
+                mini.setImageResource(android.R.drawable.sym_def_app_icon);
             }
-            GridLayout.LayoutParams p=new GridLayout.LayoutParams();p.width=Ui.dp(this,16);p.height=Ui.dp(this,16);
-            preview.addView(image,p);
+            mini.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+            params.width=Ui.dp(this,19);
+            params.height=Ui.dp(this,19);
+            params.setMargins(Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1));
+            miniGrid.addView(mini,params);
+            added++;
         }
+        preview.addView(miniGrid,new FrameLayout.LayoutParams(
+                Ui.dp(this,42),Ui.dp(this,42),Gravity.CENTER));
         return preview;
+    }
+
+    private View makeCell(LauncherItem item,boolean animate) {
+        if(!item.isFolder()) {
+            LauncherAppCellView cell=new LauncherAppCellView(this,item.title,DRAWABLES.get(item.id));
+            cell.setOnClickListener(v->launch(item.id,v));
+            cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
+            cell.setOnTouchListener((v,event)->{
+                if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
+                    android.content.ClipData data=android.content.ClipData.newPlainText("VIVO_LITE_ITEM",item.id);
+                    v.startDrag(data,new View.DragShadowBuilder(v),item.id,0);
+                    armedDragId=null;
+                    return true;
+                }
+                Ui.touchFeedback(v,event,storage.animations());
+                return false;
+            });
+            cell.setOnDragListener((v,event)->handleDrop(v,item,event));
+            if(animate&&storage.animations())Ui.enter(cell,true,4);
+            return cell;
+        }
+
+        LinearLayout cell=new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(Ui.dp(this,2),Ui.dp(this,8),Ui.dp(this,2),Ui.dp(this,4));
+        View preview=folderPreview(item);
+        cell.addView(preview,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
+        TextView name=text(item.title,10,Ui.primaryText(),true);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
+        np.topMargin=Ui.dp(this,4);
+        cell.addView(name,np);
+        cell.setOnClickListener(v->openFolder(item));
+        cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
+        cell.setOnTouchListener((v,event)->{
+            if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
+                android.content.ClipData data=android.content.ClipData.newPlainText("VIVO_LITE_ITEM",item.id);
+                v.startDrag(data,new View.DragShadowBuilder(v),item.id,0);
+                armedDragId=null;
+                return true;
+            }
+            Ui.touchFeedback(v,event,storage.animations());
+            return false;
+        });
+        cell.setOnDragListener((v,event)->handleDrop(v,item,event));
+        if(animate&&storage.animations())Ui.enter(cell,true,4);
+        return cell;
     }
 
     private boolean handleDrop(View target,LauncherItem targetItem,android.view.DragEvent event) {
@@ -743,6 +1165,10 @@ public class MainActivity extends Activity {
     }
 
     private void launch(String id) {
+        launch(id,null);
+    }
+
+    private void launch(String id,View source) {
         LauncherItem a=findApp(id);
         if(a==null)return;
         if(activeSurface!=SurfaceNavigation.HOME)navigateToSurface(SurfaceNavigation.HOME);
@@ -750,8 +1176,21 @@ public class MainActivity extends Activity {
         intent.setComponent(new ComponentName(a.packageName,a.className));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         try {
-            startActivity(intent);
-            if(storage.animations())overridePendingTransition(com.vivolite.launcher.R.anim.app_enter,com.vivolite.launcher.R.anim.app_exit);
+            if(storage.animations()&&source!=null&&source.getWidth()>0&&source.getHeight()>0) {
+                try {
+                    android.os.Bundle options=ActivityOptions.makeScaleUpAnimation(
+                            source,0,0,source.getWidth(),source.getHeight()).toBundle();
+                    startActivity(intent,options);
+                } catch(RuntimeException animationFailure) {
+                    startActivity(intent);
+                    overridePendingTransition(com.vivolite.launcher.R.anim.app_enter,
+                            com.vivolite.launcher.R.anim.app_exit);
+                }
+            } else {
+                startActivity(intent);
+                if(storage.animations())overridePendingTransition(
+                        com.vivolite.launcher.R.anim.app_enter,com.vivolite.launcher.R.anim.app_exit);
+            }
         } catch(Exception e) { Toast.makeText(this,"Unable to open app",Toast.LENGTH_SHORT).show(); }
     }
 
@@ -787,7 +1226,8 @@ public class MainActivity extends Activity {
         icon.setImageDrawable(DRAWABLES.get(app.id));icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,Math.min(Ui.ICON_DP,48)),1);
         dock.addView(icon,p);
-        icon.setOnClickListener(v->{Ui.press(icon,storage.animations());launch(app.id);});
+        icon.setOnClickListener(v->launch(app.id,v));
+        Ui.attachTouchFeedback(icon,storage.animations());
         icon.setOnLongClickListener(v->{
             new AlertDialog.Builder(this).setItems(new String[]{"Move left","Move right","Remove favourite"},(d,n)->{
                 ArrayList<String> order=new ArrayList<>(storage.getOrder("dock_order"));
@@ -820,8 +1260,8 @@ public class MainActivity extends Activity {
     };
 
     private void settings() {
-        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system","Workspace & tools"};
-        String[] descriptions={"Wallpaper, monochrome surfaces, icon sizing and icon packs","Grid, clock, pages and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts","Native widgets and launcher-owned quick tools"};
+        String[] sections={"Personalisation","Home screen","Motion & performance","Notifications","Android system","Workspace"};
+        String[] descriptions={"Wallpaper, monochrome surfaces, icon sizing and icon packs","Grid, clock, pages and dock","Animation and app management","Notification access and live alerts","Device settings shortcuts","Native widgets and your saved quick note"};
         SettingsScreen screen=new SettingsScreen(this,sections,descriptions,storage.animations(),new SettingsScreen.Listener(){
             public String[] options(int category){return settingsOptions(category);}
             public String[] descriptions(int category){return settingsDescriptions(category);}
@@ -837,7 +1277,7 @@ public class MainActivity extends Activity {
         if(section==2)return new String[]{"Animations · "+(storage.animations()?"On":"Off"),"Restore hidden apps","Refresh app library"};
         if(section==3)return new String[]{"Open notifications","Notification access settings"};
         if(section==4)return new String[]{"Android Home settings","Android display settings","Android sound settings"};
-        return new String[]{"Add a native Android widget","Open Smart Edge tools","Edit the saved quick note"};
+        return new String[]{"Add a native Android widget","Edit the saved quick note"};
     }
 
     private String[] settingsDescriptions(int section) {
@@ -846,7 +1286,7 @@ public class MainActivity extends Activity {
         if(section==2)return new String[]{"Enable or disable launcher page and interaction animations.","Make hidden apps visible again.","Re-query installed launchable apps."};
         if(section==3)return new String[]{"View notifications only when Android Notification Access is enabled.","Open Android's notification access settings."};
         if(section==4)return new String[]{"Choose the Android Home app.","Open Android display settings.","Open Android sound settings."};
-        return new String[]{"Use Android's installed widget picker and persist the chosen widget.","Open launcher-owned timer, calculator, notes and favourite shortcuts.","Edit the note saved on this device."};
+        return new String[]{"Use Android's installed widget picker and persist the chosen widget.","Edit the note saved on this device."};
     }
 
     private void applySetting(int section,int index) {
@@ -872,7 +1312,6 @@ public class MainActivity extends Activity {
             else openSystemSetting(Settings.ACTION_SOUND_SETTINGS,Settings.ACTION_SETTINGS);
         } else {
             if(index==0)pickWidget();
-            else if(index==1)showSmartEdge();
             else editQuickNote();
         }
     }
@@ -882,20 +1321,14 @@ public class MainActivity extends Activity {
         catch(Exception e) { try { startActivity(new Intent(fallback)); } catch(Exception ignored) {} }
     }
 
-    private void openLibrary() {
-        AppLibraryScreen screen = new AppLibraryScreen(this, apps, this::launch);
-        showSurface(screen,SurfaceNavigation.LIBRARY);
-        activeLibraryScreen=screen;
-    }
-
     private void showNotifications() {
-        NotificationScreen screen=new NotificationScreen(this);
+        NotificationScreen screen=new NotificationScreen(this,storage.animations());
         showSurface(screen,SurfaceNavigation.NOTIFICATIONS);
         activeNotificationScreen=screen;
     }
 
     private void showControlCenter() {
-        ControlCenterScreen screen=new ControlCenterScreen(this);
+        ControlCenterScreen screen=new ControlCenterScreen(this,storage.animations());
         screen.setTorchState(isTorchOn());
         showSurface(screen,SurfaceNavigation.CONTROL);
     }
@@ -962,6 +1395,7 @@ public class MainActivity extends Activity {
             FrameLayout.LayoutParams moreParams=new FrameLayout.LayoutParams(Ui.dp(this,40),Ui.dp(this,36),Gravity.RIGHT|Gravity.TOP);
             card.addView(more,moreParams);
             more.setOnClickListener(v->showWidgetMenu(id,info));
+            Ui.attachTouchFeedback(more,storage.animations());
             LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(-1,height);
             cardParams.bottomMargin=Ui.dp(this,8);widgetShelf.addView(card,cardParams);
         }
@@ -1025,18 +1459,22 @@ public class MainActivity extends Activity {
         activeSurfaceView=screen;
         activeSurface=destination;
         setContentView(screen);
-        if(storage.animations())Ui.enter(screen,true,10);
+        if(storage.animations())Ui.enterSurface(screen,true);
     }
 
     public void navigateToSurface(int destination) {
         if(destination==activeSurface)return;
-        closeSmartEdge();
+
         releaseActiveSurface();
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
-        if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);return;}
-        if(destination==SurfaceNavigation.LIBRARY)openLibrary();
-        else if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        if(destination==SurfaceNavigation.HOME){
+            setContentView(homeFrame);
+            if(storage.animations())Ui.enterSurface(homeFrame,true);
+            scheduleHomePageBuildFrame();
+            return;
+        }
+        if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
         else if(destination==SurfaceNavigation.SETTINGS)settings();
     }
@@ -1044,7 +1482,6 @@ public class MainActivity extends Activity {
     public boolean isSurfaceActive(int surface) { return activeSurface==surface; }
 
     private void releaseActiveSurface() {
-        if(activeLibraryScreen!=null){activeLibraryScreen.onHidden();activeLibraryScreen=null;}
         if(activeNotificationScreen!=null){activeNotificationScreen.onHidden();activeNotificationScreen=null;}
     }
 
@@ -1074,7 +1511,7 @@ public class MainActivity extends Activity {
         int selected=packages.indexOf(storage.getIconPack());if(selected<0)selected=0;
         new AlertDialog.Builder(this).setTitle("APP ICON FAMILY")
             .setSingleChoiceItems(labels.toArray(new String[0]),selected,(dialog,which)->{
-                storage.setIconPack(packages.get(which));iconPackManager.select(packages.get(which));iconCache.trim();loadApps();dialog.dismiss();
+                storage.setIconPack(packages.get(which));iconCache.trim();loadApps();dialog.dismiss();
             }).setNegativeButton("CANCEL",null).show();
     }
 
@@ -1098,8 +1535,7 @@ public class MainActivity extends Activity {
         search.setText(query);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         render(query,false,true);
-        if(previousSurface==SurfaceNavigation.LIBRARY)openLibrary();
-        else if(previousSurface==SurfaceNavigation.NOTIFICATIONS)showNotifications();
+        if(previousSurface==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(previousSurface==SurfaceNavigation.CONTROL)showControlCenter();
         else if(previousSurface==SurfaceNavigation.SETTINGS)settings();
     }
@@ -1107,24 +1543,34 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed=true;
-        if(iconsTrimmed||packagesDirty) {
+        scheduleHomePageBuildFrame();
+        if(iconsTrimmed||packagesDirty||appLoadPaused) {
             iconsTrimmed=false;
             packagesDirty=false;
+            appLoadPaused=false;
             loadApps();
-            if(activeSurface==SurfaceNavigation.LIBRARY)openLibrary();
         }
         if(activeNotificationScreen!=null)activeNotificationScreen.onShown();
     }
 
     @Override protected void onPause() {
         activityResumed=false;
+        clearHomePageDepth();
+        cancelHomePageBuildFrame();
+        // Do not keep scanning installed apps or rasterizing icons while another app is foreground.
+        // Invalidate even a completed worker whose UI result is still queued on the main thread.
+        if(appLoadNeedsApply) {
+            appLoadGeneration++;
+            if(appLoadTask!=null)appLoadTask.cancel(true);
+            appLoadNeedsApply=false;
+            appLoadPaused=true;
+        }
         super.onPause();
         try {((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(root.getWindowToken(),0);}catch(Exception ignored){}
     }
 
     @Override public void onBackPressed() {
-        if(smartEdgeOverlay!=null){closeSmartEdge();return;}
-        if(activeSurface==SurfaceNavigation.LIBRARY&&activeLibraryScreen!=null&&activeLibraryScreen.handleBack())return;
+
         if(activeSurface==SurfaceNavigation.SETTINGS&&activeSurfaceView instanceof SettingsScreen&&((SettingsScreen)activeSurfaceView).handleBack())return;
         if(activeSurface!=SurfaceNavigation.HOME){navigateToSurface(SurfaceNavigation.HOME);return;}
         if(search!=null&&search.length()>0){
@@ -1137,17 +1583,25 @@ public class MainActivity extends Activity {
 
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if(level>=TRIM_MEMORY_UI_HIDDEN&&iconCache!=null) {
+        // TRIM_MEMORY_UI_HIDDEN is sent on ordinary app launches. Keep the home icons
+        // warm for fast return; release them when Android actually demotes this process
+        // into the background under memory pressure.
+        if(level>=TRIM_MEMORY_BACKGROUND&&iconCache!=null) {
+            appLoadGeneration++;
+            if(appLoadTask!=null)appLoadTask.cancel(true);
             DRAWABLES.clear();
             clearImageDrawables(root);
             if(activeFolderDialog!=null)activeFolderDialog.dismiss();
             if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
-            closeSmartEdge();
+
             if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+            clearHomePageDepth();
+            cancelHomePageBuildFrame();
             releaseActiveSurface();
             activeSurfaceView=null;
             activeSurface=SurfaceNavigation.HOME;
             setContentView(homeFrame);
+            scheduleHomePageBuildFrame();
             iconCache.trim();
             iconsTrimmed=true;
             if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
@@ -1163,9 +1617,13 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        appLoadGeneration++;
+        if(appLoadTask!=null)appLoadTask.cancel(true);
+        appLoader.shutdownNow();
         packageRefreshHandler.removeCallbacks(packageRefresh);
         if(searchRender!=null)searchRenderHandler.removeCallbacks(searchRender);
         if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+        cancelHomePageBuildFrame();
         releaseActiveSurface();
         activeSurfaceView=null;
         if(activeFolderDialog!=null)activeFolderDialog.dismiss();

@@ -46,7 +46,7 @@ public class LauncherStorage {
     public void setShowDock(boolean value) { prefs.edit().putBoolean("dock", value).apply(); }
     public boolean animations() { return prefs.getBoolean("animations", true); }
     public void setAnimations(boolean value) { prefs.edit().putBoolean("animations", value).apply(); }
-    public boolean darkGlass() { return prefs.getBoolean("dark_glass", false); }
+    public boolean darkGlass() { return prefs.getBoolean("dark_glass", true); }
     public void setDarkGlass(boolean value) { prefs.edit().putBoolean("dark_glass", value).apply(); }
     public int getAccent() { return prefs.getInt("accent", 0xFF89AEFF); }
     public void setAccent(int value) { prefs.edit().putInt("accent", value).apply(); }

@@ -16,6 +16,7 @@ final class LegacyTorchController extends SurfaceView implements SurfaceHolder.C
     private Camera camera;
     private boolean enabled;
     private boolean permissionPending;
+    private boolean startPending;
 
     LegacyTorchController(Activity activity,Listener listener) {
         super(activity);this.activity=activity;this.listener=listener;
@@ -38,7 +39,11 @@ final class LegacyTorchController extends SurfaceView implements SurfaceHolder.C
     }
 
     private void turnOn() {
-        if(!getHolder().getSurface().isValid())return;
+        if(enabled||camera!=null)return;
+        // A SurfaceView's surface is created asynchronously. Preserve the tap until
+        // surfaceCreated instead of silently dropping the flashlight request.
+        if(!getHolder().getSurface().isValid()) { startPending=true; return; }
+        startPending=false;
         try {
             camera=openBackCamera();
             if(camera==null)throw new IllegalStateException("No rear torch");
@@ -75,6 +80,7 @@ final class LegacyTorchController extends SurfaceView implements SurfaceHolder.C
     }
 
     void turnOff() {
+        startPending=false;
         if(camera!=null) {
             try {Camera.Parameters parameters=camera.getParameters();parameters.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);camera.setParameters(parameters);}catch(Exception ignored){}
         }
@@ -87,7 +93,11 @@ final class LegacyTorchController extends SurfaceView implements SurfaceHolder.C
     }
 
     boolean isTorchEnabled(){return enabled;}
-    @Override public void surfaceCreated(SurfaceHolder holder) { }
-    @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) { }
+    @Override public void surfaceCreated(SurfaceHolder holder) {
+        if(startPending)turnOn();
+    }
+    @Override public void surfaceChanged(SurfaceHolder holder,int format,int width,int height) {
+        if(startPending&&holder.getSurface().isValid())turnOn();
+    }
     @Override public void surfaceDestroyed(SurfaceHolder holder) { turnOff(); }
 }

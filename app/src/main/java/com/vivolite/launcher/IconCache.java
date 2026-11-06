@@ -1,11 +1,13 @@
 package com.vivolite.launcher;
 
 import android.content.Context;
+import android.app.ActivityManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.ColorFilter;
+import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -33,12 +35,28 @@ public class IconCache {
         if (source == null) return new ColorDrawable(android.graphics.Color.TRANSPARENT);
         String cacheKey = key + (monochrome ? "|mono" : "|color");
         Bitmap bitmap = cache.get(cacheKey);
-        if (bitmap == null) {
-            int size = (int)(48 * context.getResources().getDisplayMetrics().density + 0.5f);
-            bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(bitmap);
+        if (bitmap != null) {
+            try {
+                return new BitmapDrawable(context.getResources(), bitmap);
+            } catch (OutOfMemoryError exhausted) {
+                // A native icon is preferable to failing the entire app-library scan.
+                return source;
+            }
+        }
+
+        Bitmap created = null;
+        Rect previousBounds = null;
+        ColorFilter previousFilter = null;
+        try {
+            ActivityManager activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            boolean lowRam = activityManager != null && activityManager.isLowRamDevice();
+            int logicalSizeDp = lowRam ? 40 : 48;
+            int size = (int)(logicalSizeDp * context.getResources().getDisplayMetrics().density + 0.5f);
+            created = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(created);
+            previousBounds = new Rect(source.getBounds());
+            previousFilter = source.getColorFilter();
             source.setBounds(0, 0, size, size);
-            ColorFilter previous = source.getColorFilter();
             if (monochrome) {
                 ColorMatrix matrix = new ColorMatrix();
                 matrix.setSaturation(0f);
@@ -47,11 +65,26 @@ public class IconCache {
             try {
                 source.draw(canvas);
             } finally {
-                if (monochrome) source.setColorFilter(previous);
+                source.setColorFilter(previousFilter);
+                source.setBounds(previousBounds);
             }
-            cache.put(cacheKey, bitmap);
+
+            BitmapDrawable result = new BitmapDrawable(context.getResources(), created);
+            cache.put(cacheKey, created);
+            return result;
+        } catch (OutOfMemoryError exhausted) {
+            // Rasterization can fail after bitmap allocation too (Canvas, filters,
+            // drawable wrappers, or cache bookkeeping). Keep this app entry usable.
+            if (created != null && !created.isRecycled()) created.recycle();
+            cache.evictAll();
+            return source;
+        } finally {
+            // Restore shared icon-pack drawables even if rasterization failed midway.
+            if (previousBounds != null) {
+                source.setColorFilter(previousFilter);
+                source.setBounds(previousBounds);
+            }
         }
-        return new BitmapDrawable(context.getResources(), bitmap);
     }
 
     public void trim() { cache.evictAll(); }
