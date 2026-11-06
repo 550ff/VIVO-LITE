@@ -1,6 +1,7 @@
 package com.vivolite.launcher;
 
 import android.content.Context;
+import android.app.ActivityManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorMatrix;
@@ -47,7 +48,10 @@ public class IconCache {
         Rect previousBounds = null;
         ColorFilter previousFilter = null;
         try {
-            int size = (int)(48 * context.getResources().getDisplayMetrics().density + 0.5f);
+            ActivityManager activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            boolean lowRam = activityManager != null && activityManager.isLowRamDevice();
+            int logicalSizeDp = lowRam ? 40 : 48;
+            int size = (int)(logicalSizeDp * context.getResources().getDisplayMetrics().density + 0.5f);
             created = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(created);
             previousBounds = new Rect(source.getBounds());
