@@ -58,3 +58,11 @@ The artifact includes `app-debug.apk.sha256`; use it to verify the downloaded AP
 ## Validation status
 
 GitHub Actions verifies that the APK builds and that its package ID and version metadata match this release. A successful CI build confirms compilation and packaging, not real-device behaviour. Final acceptance still requires installing it on the Y21L and testing home selection, app launch, folders, widgets, torch access and vendor-specific quick settings.
+
+
+### 1.5.6 follow-up polish
+
+- Adds native icon-origin scale-up app launches on API 21+ with a safe fallback to the existing transition.
+- Restores the compact 2×2 folder icon preview.
+- Fixes the custom app-cell text measurement and home-page cell type compilation issues.
+- Retains the native Java/View rendering architecture with no additional runtime dependency.
