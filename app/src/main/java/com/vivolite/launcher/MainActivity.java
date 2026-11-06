@@ -386,6 +386,7 @@ public class MainActivity extends Activity {
         if (appLoadTask != null) appLoadTask.cancel(true);
 
         appLoadTask = appLoader.submit(() -> {
+            try {
             PackageManager pm = appContext.getPackageManager();
             IconPackManager loadedPack = new IconPackManager(appContext);
             loadedPack.select(selectedPack);
@@ -438,6 +439,20 @@ public class MainActivity extends Activity {
                 restoreHomeItems();
                 render(search == null ? "" : search.getText().toString());
             });
+            } catch (RuntimeException scanFailure) {
+                // Keep the last good app list if PackageManager or icon-pack loading
+                // fails during a refresh. A failed refresh must not strand the launcher
+                // in a permanent loading state or replace working entries with nothing.
+                appLoadHandler.post(() -> {
+                    if (generation != appLoadGeneration || isFinishing()) return;
+                    appLoadNeedsApply = false;
+                    appLoadPaused = false;
+                    if (activityResumed) {
+                        Toast.makeText(this, "App refresh failed · showing previous apps",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
         });
     }
 
