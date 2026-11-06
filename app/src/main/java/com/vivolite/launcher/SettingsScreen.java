@@ -100,6 +100,6 @@ public final class SettingsScreen extends LinearLayout {
 
     private TextView text(String value,int size,int color,boolean bold) {
         TextView view=new TextView(context);view.setText(value);view.setTextSize(size);view.setTextColor(color);
-        if(bold)view.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return view;
+        if(bold)view.setTypeface(Ui.mediumTypeface());return view;
     }
 }
