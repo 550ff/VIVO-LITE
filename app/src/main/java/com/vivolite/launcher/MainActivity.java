@@ -870,72 +870,54 @@ public class MainActivity extends Activity {
             count.setText(String.format(Locale.ROOT,"%02d / %02d",selectedPage+1,pageDots.getChildCount()));
     }
 
-    private LinearLayout makeCell(LauncherItem item,boolean animate) {
-        LinearLayout cell=new LinearLayout(this);
-        cell.setOrientation(LinearLayout.VERTICAL);cell.setGravity(Gravity.CENTER);
-        cell.setPadding(Ui.dp(this,2),Ui.dp(this,8),Ui.dp(this,2),Ui.dp(this,4));
-        View iconView;
-        if(item.isFolder()) iconView=folderPreview(item);
-        else {
-            ImageView icon=new ImageView(this);
-            Drawable d=DRAWABLES.get(item.id);
-            if(d!=null)icon.setImageDrawable(d);
-            icon.setBackground(Ui.iconPlate(this));
-            icon.setPadding(Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3),Ui.dp(this,3));
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int available= Math.max(32,(getResources().getDisplayMetrics().widthPixels-Ui.dp(this,40))/columns-8);
-            int iconSize=Ui.dp(this,Math.min(Ui.ICON_DP,available));
-            iconView=icon;
-            cell.addView(iconView,new LinearLayout.LayoutParams(iconSize,iconSize));
+    private View makeCell(LauncherItem item,boolean animate) {
+        if(!item.isFolder()) {
+            LauncherAppCellView cell=new LauncherAppCellView(this,item.title,DRAWABLES.get(item.id));
+            cell.setOnClickListener(v->launch(item.id));
+            cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
+            cell.setOnTouchListener((v,event)->{
+                if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
+                    android.content.ClipData data=android.content.ClipData.newPlainText("VIVO_LITE_ITEM",item.id);
+                    v.startDrag(data,new View.DragShadowBuilder(v),item.id,0);
+                    armedDragId=null;
+                    return true;
+                }
+                Ui.touchFeedback(v,event,storage.animations());
+                return false;
+            });
+            cell.setOnDragListener((v,event)->handleDrop(v,item,event));
+            if(animate&&storage.animations())Ui.enter(cell,true,4);
+            return cell;
         }
-        if(item.isFolder())cell.addView(iconView,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
-        TextView name=text(item.title,10,Ui.primaryText(),false);
-        name.setGravity(Gravity.CENTER);name.setSingleLine(true);
-        name.setIncludeFontPadding(false);
-        name.setTypeface(Ui.mediumTypeface());
-        name.setLetterSpacing(0.005f);
+
+        LinearLayout cell=new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(Ui.dp(this,2),Ui.dp(this,8),Ui.dp(this,2),Ui.dp(this,4));
+        View preview=folderPreview(item);
+        cell.addView(preview,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
+        TextView name=text(item.title,10,Ui.primaryText(),true);
+        name.setGravity(Gravity.CENTER);
+        name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        cell.setContentDescription(item.isFolder()
-                ? "Folder: "+item.title+", "+item.children.size()+" apps"
-                : "App: "+item.title);
         LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
-        np.topMargin=Ui.dp(this,4);cell.addView(name,np);
-        cell.setOnClickListener(v->{
-            if(item.isFolder())openFolder(item);else launch(item.id);
-        });
+        np.topMargin=Ui.dp(this,4);
+        cell.addView(name,np);
+        cell.setOnClickListener(v->openFolder(item));
         cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
         cell.setOnTouchListener((v,event)->{
             if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
-                android.content.ClipData data = android.content.ClipData.newPlainText("VIVO_LITE_ITEM", item.id);
-                v.startDrag(data, new View.DragShadowBuilder(v), item.id, 0);
-                armedDragId = null;
+                android.content.ClipData data=android.content.ClipData.newPlainText("VIVO_LITE_ITEM",item.id);
+                v.startDrag(data,new View.DragShadowBuilder(v),item.id,0);
+                armedDragId=null;
                 return true;
             }
             Ui.touchFeedback(v,event,storage.animations());
             return false;
         });
         cell.setOnDragListener((v,event)->handleDrop(v,item,event));
-        if(item.isFolder())cell.setOnClickListener(v->openFolder(item));
         if(animate&&storage.animations())Ui.enter(cell,true,4);
         return cell;
-    }
-
-    private View folderPreview(LauncherItem folder) {
-        GridLayout preview=new GridLayout(this);preview.setColumnCount(2);
-        preview.setPadding(Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4));
-        preview.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,14));
-        for(int i=0;i<4;i++) {
-            ImageView image=new ImageView(this);
-            if(i<folder.children.size()) {
-                Drawable d=DRAWABLES.get(folder.children.get(i));
-                if(d!=null)image.setImageDrawable(d);
-            }
-            GridLayout.LayoutParams p=new GridLayout.LayoutParams();
-            p.width=Ui.dp(this,16);p.height=Ui.dp(this,16);
-            p.setMargins(Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1));
-            preview.addView(image,p);
-        }
-        return preview;
     }
 
     private boolean handleDrop(View target,LauncherItem targetItem,android.view.DragEvent event) {
