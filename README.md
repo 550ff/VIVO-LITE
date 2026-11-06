@@ -1,4 +1,4 @@
-# VIVO LITE 1.5.6 — Compact rendering and visual polish
+# VIVO LITE 1.5.7 — Premium motion and depth
 
 VIVO LITE is a native, lightweight Android launcher tuned for the Vivo Y21L (Android 5.1.1 / API 22). It replaces the home-screen experience; it does **not** replace Android or install a custom ROM.
 
@@ -23,7 +23,7 @@ VIVO LITE is a native, lightweight Android launcher tuned for the Vivo Y21L (And
 - Page-settle animation reuses one runnable instead of allocating a new callback on every scroll update
 - Home pages keep lightweight placeholders for distant pages and populate cells in small Choreographer-scheduled batches, instead of creating a full page in one main-thread burst
 - Only the current page and immediate neighbours stay populated; distant page cells are released and rebuilt when they become relevant
-- A shared motion engine aligns press, release and screen-entry durations to the display refresh interval, reuses easing curves and limits motion to translation/scale
+- A shared motion engine aligns press and release durations to the display refresh interval and uses compositor-friendly transforms
 - Home-page build scheduling prioritizes the newly visible page and prefetches the next page in the actual swipe direction, so reverse swipes are not queued behind stale forward-prefetch work
 - Page-cell construction uses a 2 ms per-frame time budget and a two-cell hard cap, yielding when the frame is already late instead of blindly inflating three cells on every callback
 - Page-cell construction pauses during finger movement and fling settling, then resumes after the page lands
@@ -66,3 +66,16 @@ GitHub Actions verifies that the APK builds and that its package ID and version 
 - Restores the compact 2×2 folder icon preview.
 - Fixes the custom app-cell text measurement and home-page cell type compilation issues.
 - Retains the native Java/View rendering architecture with no additional runtime dependency.
+
+
+## VIVO LITE 1.5.7 — Premium motion and depth
+
+- Full-screen launcher surfaces now enter with a 300 ms scale, fade and vertical settle using a modern cubic motion curve.
+- Full-screen transitions use a temporary hardware layer, released at animation completion rather than held in memory.
+- Home-page swipes use a restrained depth/parallax treatment: adjacent pages scale and fade slightly while moving, using temporary GPU layers that are released when the page settles or the launcher pauses.
+- App icon plates now have an accent-tinted radial glow, a vertical glass gradient, a fine accent rim and a soft top sheen.
+- Folder dialogs use a more expressive overshoot entrance and a cleaner scale-down exit.
+- Press feedback is more visible and releases over a slightly longer easing curve.
+- No third-party rendering engine or AndroidX animation dependency was added; the implementation uses platform APIs available from API 21.
+
+Hardware layers consume graphics memory, so VIVO LITE enables them only for active page motion and short surface transitions. Actual smoothness and memory use still require testing on the physical Y21L.
