@@ -315,7 +315,7 @@ public class MainActivity extends Activity {
         navigationParams.topMargin=Ui.dp(this,7);
         root.addView(new SurfaceNavigation(this,SurfaceNavigation.HOME),navigationParams);
         homeFrame=new FrameLayout(this);
-        homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
+        homeFrame.setBackgroundColor(Color.TRANSPARENT);
         homeFrame.addView(root,new FrameLayout.LayoutParams(-1,-1));
         setContentView(homeFrame);
 
@@ -352,7 +352,7 @@ public class MainActivity extends Activity {
 
     private TextView text(String value,int size,int color,boolean bold) {
         TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);
-        if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        if(bold)t.setTypeface(Ui.mediumTypeface());
         return t;
     }
 
@@ -374,7 +374,6 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(13,19,30));
         getWindow().setNavigationBarColor(Color.rgb(13,19,30));
         if(root!=null)root.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
-        if(homeFrame!=null)homeFrame.setBackground(new LauncherWallpaperDrawable(storage.getAccent(),storage.getWallpaper()));
     }
 
     private void loadApps() {
@@ -890,9 +889,15 @@ public class MainActivity extends Activity {
             cell.addView(iconView,new LinearLayout.LayoutParams(iconSize,iconSize));
         }
         if(item.isFolder())cell.addView(iconView,new LinearLayout.LayoutParams(Ui.dp(this,46),Ui.dp(this,46)));
-        TextView name=text(item.title,10,Ui.WHITE,false);
+        TextView name=text(item.title,10,Ui.primaryText(),false);
         name.setGravity(Gravity.CENTER);name.setSingleLine(true);
+        name.setIncludeFontPadding(false);
+        name.setTypeface(Ui.mediumTypeface());
+        name.setLetterSpacing(0.005f);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        cell.setContentDescription(item.isFolder()
+                ? "Folder: "+item.title+", "+item.children.size()+" apps"
+                : "App: "+item.title);
         LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,Ui.dp(this,25));
         np.topMargin=Ui.dp(this,4);cell.addView(name,np);
         cell.setOnClickListener(v->{
@@ -917,15 +922,17 @@ public class MainActivity extends Activity {
 
     private View folderPreview(LauncherItem folder) {
         GridLayout preview=new GridLayout(this);preview.setColumnCount(2);
-        preview.setPadding(Ui.dp(this,5),Ui.dp(this,5),Ui.dp(this,5),Ui.dp(this,5));
-        preview.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,13));
+        preview.setPadding(Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4),Ui.dp(this,4));
+        preview.setBackground(Ui.panel(this,Ui.GLASS_LIGHT,14));
         for(int i=0;i<4;i++) {
             ImageView image=new ImageView(this);
             if(i<folder.children.size()) {
                 Drawable d=DRAWABLES.get(folder.children.get(i));
                 if(d!=null)image.setImageDrawable(d);
             }
-            GridLayout.LayoutParams p=new GridLayout.LayoutParams();p.width=Ui.dp(this,16);p.height=Ui.dp(this,16);
+            GridLayout.LayoutParams p=new GridLayout.LayoutParams();
+            p.width=Ui.dp(this,16);p.height=Ui.dp(this,16);
+            p.setMargins(Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1));
             preview.addView(image,p);
         }
         return preview;
