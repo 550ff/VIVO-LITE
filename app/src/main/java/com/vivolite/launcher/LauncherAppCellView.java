@@ -25,7 +25,8 @@ final class LauncherAppCellView extends View {
     LauncherAppCellView(Context context,String label,Drawable icon) {
         super(context);
         this.label=label==null?"":label;
-        this.icon=icon;
+        Drawable.ConstantState state=icon==null?null:icon.getConstantState();
+        this.icon=state==null?icon:state.newDrawable(context.getResources());
         density=getResources().getDisplayMetrics().density;
         platePaint.setStyle(Paint.Style.FILL);
         platePaint.setColor(Ui.GLASS_LIGHT);
