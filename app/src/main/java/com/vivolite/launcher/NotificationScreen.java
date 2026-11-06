@@ -127,7 +127,13 @@ public final class NotificationScreen extends LinearLayout {
             }
         }
         catch(Exception ignored) { }
-        if(appIcon!=null){android.widget.ImageView icon=new android.widget.ImageView(context);icon.setImageDrawable(appIcon);card.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,28),Ui.dp(context,28)));}
+        if(appIcon!=null){
+            android.widget.ImageView icon=new android.widget.ImageView(context);
+            icon.setImageDrawable(appIcon);
+            icon.setBackground(Ui.iconPlate(context));
+            icon.setPadding(Ui.dp(context,2),Ui.dp(context,2),Ui.dp(context,2),Ui.dp(context,2));
+            card.addView(icon,new LinearLayout.LayoutParams(Ui.dp(context,30),Ui.dp(context,30)));
+        }
         TextView identity=text(appName+"  ·  "+DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(entry.when)),10,Ui.secondaryText(),false);
         card.addView(identity);
         if(!entry.title.isEmpty()) {
@@ -153,7 +159,7 @@ public final class NotificationScreen extends LinearLayout {
 
     private TextView text(String value,int size,int color,boolean bold) {
         TextView view=new TextView(context);view.setText(value);view.setTextSize(size);view.setTextColor(color);
-        if(bold)view.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        if(bold)view.setTypeface(Ui.mediumTypeface());
         return view;
     }
 }
