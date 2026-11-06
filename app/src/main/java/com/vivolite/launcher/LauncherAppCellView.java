@@ -7,6 +7,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
+import android.text.TextPaint;
 import android.view.View;
 
 /**
@@ -16,7 +17,7 @@ import android.view.View;
 final class LauncherAppCellView extends View {
     private final Paint platePaint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint labelPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint labelPaint=new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Rect iconBounds=new Rect();
     private final String label;
     private final Drawable icon;
