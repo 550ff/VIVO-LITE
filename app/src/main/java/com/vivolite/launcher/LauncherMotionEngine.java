@@ -1,5 +1,7 @@
 package com.vivolite.launcher;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.view.Display;
 import android.view.MotionEvent;
@@ -21,7 +23,9 @@ public final class LauncherMotionEngine {
             new PathInterpolator(0.30f, 0.00f, 0.70f, 0.20f);
     private static final Interpolator EASE_OUT =
             new PathInterpolator(0.20f, 0.80f, 0.20f, 1.00f);
-    private static final float PRESS_SCALE = 0.975f;
+    private static final Interpolator SURFACE_CURVE =
+            new PathInterpolator(0.16f, 1.00f, 0.30f, 1.00f);
+    private static final float PRESS_SCALE = 0.955f;
     private static float frameDurationMs = 1000f / 60f;
 
     private LauncherMotionEngine() {}
@@ -59,6 +63,31 @@ public final class LauncherMotionEngine {
                 .start();
     }
 
+    /**
+     * Rich entrance for full-screen launcher surfaces. A temporary GPU layer keeps
+     * the composed surface stable during the scale/fade, then releases video memory.
+     */
+    public static void enterSurface(View view,boolean enabled) {
+        if(!enabled||view==null)return;
+        ViewPropertyAnimator animator=view.animate();
+        animator.cancel();
+        view.setLayerType(View.LAYER_TYPE_HARDWARE,null);
+        view.setAlpha(0f);
+        view.setScaleX(0.965f);
+        view.setScaleY(0.965f);
+        view.setTranslationY(Ui.dp(view.getContext(),14));
+        animator.alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                .setDuration(frames(18))
+                .setInterpolator(SURFACE_CURVE)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(Animator animation) {
+                        view.setLayerType(View.LAYER_TYPE_NONE,null);
+                        view.animate().setListener(null);
+                    }
+                })
+                .start();
+    }
+
     /** Immediate tactile response without intercepting click, drag, or long-press. */
     public static void touchFeedback(View view,MotionEvent event,boolean enabled) {
         if(!enabled||view==null||event==null)return;
@@ -67,7 +96,7 @@ public final class LauncherMotionEngine {
             ViewPropertyAnimator animator=view.animate();
             animator.cancel();
             animator.scaleX(PRESS_SCALE).scaleY(PRESS_SCALE)
-                    .setDuration(frames(6))
+                    .setDuration(frames(5))
                     .setInterpolator(PRESS_IN)
                     .start();
         } else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL) {
@@ -92,7 +121,7 @@ public final class LauncherMotionEngine {
         ViewPropertyAnimator animator=view.animate();
         animator.cancel();
         animator.scaleX(1f).scaleY(1f)
-                .setDuration(frames(10))
+                .setDuration(frames(12))
                 .setInterpolator(EASE_OUT)
                 .start();
     }
