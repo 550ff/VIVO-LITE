@@ -59,6 +59,10 @@ public final class Ui {
         LauncherMotionEngine.enter(view,enabled,distance);
     }
 
+    public static void enterSurface(View view,boolean enabled) {
+        LauncherMotionEngine.enterSurface(view,enabled);
+    }
+
     /** Immediate visual response while the finger is down; returns false so normal click/long-click handling continues. */
     public static void attachTouchFeedback(View view, boolean enabled) {
         if (view == null || !enabled) return;
