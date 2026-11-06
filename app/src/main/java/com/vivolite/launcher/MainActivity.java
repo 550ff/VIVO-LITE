@@ -1,6 +1,7 @@
 package com.vivolite.launcher;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.AlertDialog;
 import android.appwidget.AppWidgetHost;
 import android.appwidget.AppWidgetHostView;
@@ -686,7 +687,7 @@ public class MainActivity extends Activity {
                     &&System.nanoTime()<buildDeadlineNanos) {
                 LauncherItem item=items.get(index);
                 boolean animate=homePageBuildAnimate.get(page)&&index<columns;
-                LinearLayout cellView=makeCell(item,animate);
+                View cellView=makeCell(item,animate);
                 GridLayout.LayoutParams params=new GridLayout.LayoutParams();
                 params.width=homePageWidth()/columns;
                 params.height=Ui.dp(this,104);
@@ -870,10 +871,42 @@ public class MainActivity extends Activity {
             count.setText(String.format(Locale.ROOT,"%02d / %02d",selectedPage+1,pageDots.getChildCount()));
     }
 
+    private View folderPreview(LauncherItem folder) {
+        FrameLayout preview=new FrameLayout(this);
+        preview.setBackground(Ui.iconPlate(this));
+        GridLayout miniGrid=new GridLayout(this);
+        miniGrid.setColumnCount(2);
+        miniGrid.setRowCount(2);
+        int added=0;
+        for(String childId:folder.children) {
+            if(added>=4)break;
+            LauncherItem child=findApp(childId);
+            if(child==null)continue;
+            ImageView mini=new ImageView(this);
+            Drawable drawable=DRAWABLES.get(child.id);
+            if(drawable!=null) {
+                Drawable.ConstantState state=drawable.getConstantState();
+                mini.setImageDrawable(state==null?drawable:state.newDrawable(getResources()));
+            } else {
+                mini.setImageResource(android.R.drawable.sym_def_app_icon);
+            }
+            mini.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            GridLayout.LayoutParams params=new GridLayout.LayoutParams();
+            params.width=Ui.dp(this,19);
+            params.height=Ui.dp(this,19);
+            params.setMargins(Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1),Ui.dp(this,1));
+            miniGrid.addView(mini,params);
+            added++;
+        }
+        preview.addView(miniGrid,new FrameLayout.LayoutParams(
+                Ui.dp(this,42),Ui.dp(this,42),Gravity.CENTER));
+        return preview;
+    }
+
     private View makeCell(LauncherItem item,boolean animate) {
         if(!item.isFolder()) {
             LauncherAppCellView cell=new LauncherAppCellView(this,item.title,DRAWABLES.get(item.id));
-            cell.setOnClickListener(v->launch(item.id));
+            cell.setOnClickListener(v->launch(item.id,v));
             cell.setOnLongClickListener(v->{showItemMenu(item);return true;});
             cell.setOnTouchListener((v,event)->{
                 if(event.getAction()==MotionEvent.ACTION_DOWN && item.id.equals(armedDragId)) {
@@ -1047,6 +1080,10 @@ public class MainActivity extends Activity {
     }
 
     private void launch(String id) {
+        launch(id,null);
+    }
+
+    private void launch(String id,View source) {
         LauncherItem a=findApp(id);
         if(a==null)return;
         if(activeSurface!=SurfaceNavigation.HOME)navigateToSurface(SurfaceNavigation.HOME);
@@ -1054,8 +1091,21 @@ public class MainActivity extends Activity {
         intent.setComponent(new ComponentName(a.packageName,a.className));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         try {
-            startActivity(intent);
-            if(storage.animations())overridePendingTransition(com.vivolite.launcher.R.anim.app_enter,com.vivolite.launcher.R.anim.app_exit);
+            if(storage.animations()&&source!=null&&source.getWidth()>0&&source.getHeight()>0) {
+                try {
+                    android.os.Bundle options=ActivityOptions.makeScaleUpAnimation(
+                            source,0,0,source.getWidth(),source.getHeight()).toBundle();
+                    startActivity(intent,options);
+                } catch(RuntimeException animationFailure) {
+                    startActivity(intent);
+                    overridePendingTransition(com.vivolite.launcher.R.anim.app_enter,
+                            com.vivolite.launcher.R.anim.app_exit);
+                }
+            } else {
+                startActivity(intent);
+                if(storage.animations())overridePendingTransition(
+                        com.vivolite.launcher.R.anim.app_enter,com.vivolite.launcher.R.anim.app_exit);
+            }
         } catch(Exception e) { Toast.makeText(this,"Unable to open app",Toast.LENGTH_SHORT).show(); }
     }
 
@@ -1091,7 +1141,7 @@ public class MainActivity extends Activity {
         icon.setImageDrawable(DRAWABLES.get(app.id));icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,Ui.dp(this,Math.min(Ui.ICON_DP,48)),1);
         dock.addView(icon,p);
-        icon.setOnClickListener(v->launch(app.id));
+        icon.setOnClickListener(v->launch(app.id,v));
         Ui.attachTouchFeedback(icon,storage.animations());
         icon.setOnLongClickListener(v->{
             new AlertDialog.Builder(this).setItems(new String[]{"Move left","Move right","Remove favourite"},(d,n)->{
