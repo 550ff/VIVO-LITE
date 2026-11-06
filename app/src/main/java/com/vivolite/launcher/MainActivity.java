@@ -302,6 +302,7 @@ public class MainActivity extends Activity {
         pageDots=new LinearLayout(this);pageDots.setGravity(Gravity.CENTER);
         root.addView(pageDots,new LinearLayout.LayoutParams(-1,Ui.dp(this,20)));
         homePager.getViewTreeObserver().addOnScrollChangedListener(this::onHomePagerScrolled);
+        homePager.post(this::clearHomePageDepth);
 
         if(storage.showDock()) {
             dock=new LinearLayout(this);
@@ -819,6 +820,7 @@ public class MainActivity extends Activity {
             lastHomePagerScrollX=scrollX;
         }
         updatePageIndicator();
+        applyHomePageDepth();
         // A fling keeps producing scroll callbacks after ACTION_UP. Debounce from
         // the final scroll frame instead of snapping 90ms after the finger lifts.
         if(!homePagerDragging)schedulePageSnap();
@@ -841,11 +843,48 @@ public class MainActivity extends Activity {
             return;
         }
         homePagerScrolling=false;
+        clearHomePageDepth();
         // Remove distant cells only after motion stops; removeAllViews() during a
         // fling forces main-thread hierarchy work in the middle of a frame.
         trimDistantHomePages(settledPage);
         preloadNearbyHomePages(settledPage,false,homePageBuildDirection);
         scheduleHomePageBuildFrame();
+    }
+
+    /**
+     * Subtle depth/parallax while paging. Adjacent pages are cached as GPU layers only
+     * while the finger/fling is moving; the layers are released as soon as snapping ends.
+     */
+    private void applyHomePageDepth() {
+        if(homePager==null||homeGrids.isEmpty())return;
+        int width=homePageWidth();
+        if(width<=0)return;
+        int scrollX=homePager.getScrollX();
+        for(GridLayout page:homeGrids) {
+            float offset=(page.getLeft()-scrollX)/(float)width;
+            float distance=Math.min(1f,Math.abs(offset));
+            boolean near=Math.abs(offset)<1.18f;
+            int layer=near?View.LAYER_TYPE_HARDWARE:View.LAYER_TYPE_NONE;
+            if(page.getLayerType()!=layer)page.setLayerType(layer,null);
+            page.setPivotX(width*0.5f);
+            page.setPivotY(Math.max(1,page.getHeight())*0.5f);
+            page.setScaleX(1f-distance*0.045f);
+            page.setScaleY(1f-distance*0.045f);
+            page.setAlpha(1f-distance*0.14f);
+            page.setTranslationX(-offset*Ui.dp(this,8));
+        }
+    }
+
+    private void clearHomePageDepth() {
+        if(homeGrids.isEmpty())return;
+        for(GridLayout page:homeGrids) {
+            if(page.getLayerType()!=View.LAYER_TYPE_NONE)
+                page.setLayerType(View.LAYER_TYPE_NONE,null);
+            page.setAlpha(1f);
+            page.setScaleX(1f);
+            page.setScaleY(1f);
+            page.setTranslationX(0f);
+        }
     }
 
     private void updatePageIndicator() {
@@ -1374,7 +1413,7 @@ public class MainActivity extends Activity {
         activeSurfaceView=screen;
         activeSurface=destination;
         setContentView(screen);
-        if(storage.animations())Ui.enter(screen,true,10);
+        if(storage.animations())Ui.enterSurface(screen,true);
     }
 
     public void navigateToSurface(int destination) {
@@ -1383,7 +1422,12 @@ public class MainActivity extends Activity {
         releaseActiveSurface();
         activeSurfaceView=null;
         activeSurface=SurfaceNavigation.HOME;
-        if(destination==SurfaceNavigation.HOME){setContentView(homeFrame);scheduleHomePageBuildFrame();return;}
+        if(destination==SurfaceNavigation.HOME){
+            setContentView(homeFrame);
+            if(storage.animations())Ui.enterSurface(homeFrame,true);
+            scheduleHomePageBuildFrame();
+            return;
+        }
         if(destination==SurfaceNavigation.NOTIFICATIONS)showNotifications();
         else if(destination==SurfaceNavigation.CONTROL)showControlCenter();
         else if(destination==SurfaceNavigation.SETTINGS)settings();
@@ -1465,6 +1509,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         activityResumed=false;
+        clearHomePageDepth();
         cancelHomePageBuildFrame();
         // Do not keep scanning installed apps or rasterizing icons while another app is foreground.
         // Invalidate even a completed worker whose UI result is still queued on the main thread.
@@ -1504,6 +1549,7 @@ public class MainActivity extends Activity {
             if(activeSurfaceView!=null)clearImageDrawables(activeSurfaceView);
 
             if(pageSnap!=null)pageSnapHandler.removeCallbacks(pageSnap);
+            clearHomePageDepth();
             cancelHomePageBuildFrame();
             releaseActiveSurface();
             activeSurfaceView=null;
