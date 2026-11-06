@@ -220,15 +220,15 @@ public class MainActivity extends Activity {
         timeBlock.setGravity(Gravity.CENTER_VERTICAL);
         TextView timeCaption = text("LOCAL TIME",8,Ui.ACCENT,true);
         timeCaption.setLetterSpacing(0.16f);
-        timeBlock.addView(timeCaption,new LinearLayout.LayoutParams(-1,Ui.dp(this,15)));
+        timeBlock.addView(timeCaption,new LinearLayout.LayoutParams(-1,Ui.dp(this,14)));
 
         clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm"); clock.setFormat12Hour("h:mm");
         clock.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);
-        clock.setTextSize(52); clock.setTextColor(Ui.WHITE);
+        clock.setTextSize(48); clock.setTextColor(Ui.WHITE);
         clock.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));
         clock.setLetterSpacing(0.005f);
-        timeBlock.addView(clock,new LinearLayout.LayoutParams(-1,Ui.dp(this,66)));
+        timeBlock.addView(clock,new LinearLayout.LayoutParams(-1,Ui.dp(this,60)));
         clockRow.addView(timeBlock,new LinearLayout.LayoutParams(0,-2,1f));
 
         View clockDivider = new View(this);
